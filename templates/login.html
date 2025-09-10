@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* --- THE FIX IS HERE --- */
-        /* We create a rule for the body tag */
+        /* We create a CSS rule for the body tag itself */
         body {
             background-image: url("{{ url_for('static', filename='images/login-bg.jpg') }}");
             background-size: cover;
@@ -15,19 +15,19 @@
         }
 
         .transparent-box {
-            background-color: rgba(56, 56, 56, 0.3); 
+            background-color: rgba(0, 0, 0, 0.3); 
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
     </style>
 </head>
-<!-- The body tag is now clean, with no style attribute -->
+<!-- The body tag is now clean and has no style attribute -->
 <body>
     
     <div class="min-h-screen flex items-center justify-center">
         
         <div class="transparent-box shadow-2xl rounded-lg p-8 w-full max-w-sm text-white">
             
-            <h2 class="text-3xl font-bold mb-6 text-center">Harmony Private School Portal</h2>
+            <h2 class="text-3xl font-bold mb-6 text-center">Harmony School Portal</h2>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
