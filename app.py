@@ -7,16 +7,13 @@ from routes.admin import admin_bp
 from routes.user import user_bp
 from routes.assignment import assignment_bp
 from routes.profile import profile_bp
-from routes.curriculum import curriculum_bp # <-- 1. IMPORT
+from routes.curriculum import curriculum_bp
 from db import close_db
 
 def create_app():
     app = Flask(__name__)
-    app.secret_key = Config.SECRET_KEY
-    app.debug = Config.DEBUG
-
-    app.teardown_appcontext(close_db)
-
+    app.config.from_object(Config) # A more robust way to load config
+    
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp, url_prefix='/students')
@@ -25,7 +22,10 @@ def create_app():
     app.register_blueprint(user_bp, url_prefix='/users')
     app.register_blueprint(assignment_bp, url_prefix='/assignments')
     app.register_blueprint(profile_bp, url_prefix='/profile')
-    app.register_blueprint(curriculum_bp, url_prefix='/curriculum') # <-- 2. REGISTER
+    app.register_blueprint(curriculum_bp, url_prefix='/curriculum')
+
+    # Register the teardown function
+    app.teardown_appcontext(close_db)
 
     @app.route('/')
     def index():
@@ -33,6 +33,10 @@ def create_app():
 
     return app
 
+# --- THE FIX IS HERE ---
+# We create the app instance in the global scope
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
-    app.run()
+    # This part is now only used for local development
+    app.run(debug=True)
