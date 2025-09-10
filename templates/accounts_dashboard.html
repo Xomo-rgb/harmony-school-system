@@ -1,0 +1,62 @@
+{% extends "accounts_base.html" %}
+
+{% block title %}Accounts Dashboard{% endblock %}
+{% block header_title %}Accounts Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stat Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-yellow-500 text-white rounded-full">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-600">Total Payments Recorded</h3>
+                <p class="text-3xl font-bold text-gray-800">{{ payment_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center">
+            <div class="p-3 bg-emerald-500 text-white rounded-full">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1V4m0 2.01M12 18v-1m0-1v-1m0-1v-1m0-1v-1m0-1v-1m0-1V8m0 0v1m0 0v.01m0 0v.01M12 12a2 2 0 100-4 2 2 0 000 4zm0 0a2 2 0 110 4 2 2 0 010-4zm0 0v-1m0 0V8m0 0v.01m0 0V7m0 1v1m0 1v1m0 1v1m0 1v1m0 1v1m0 1V8m0 0v1m0 1v1m0 1v1m0 1v1m0 1v1m0 1v1m0-1V8"></path></svg>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-semibold text-gray-600">Total Fees Collected</h3>
+                <!-- *** THE FIX IS HERE *** -->
+                <p class="text-3xl font-bold text-gray-800">MWK {{ "%.2f"|format(total_collected) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Grid -->
+<h3 class="text-xl font-semibold text-gray-700 mb-4">Quick Actions</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Card 1: Record Fee Payment -->
+    <a href="{{ url_for('admin.fee_payment_form') }}" class="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center text-center hover:shadow-xl transition-shadow duration-300">
+        <div class="p-4 bg-green-100 rounded-full mb-4">
+            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 8h6m-5 4h.01M4.88 16.05A10 10 0 1119.1 8.01M4 12a8 8 0 018-8"></path></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900">Record Fee Payment</h3>
+        <p class="mt-2 text-sm text-gray-600">Enter a new fee payment record for a student.</p>
+    </a>
+    <!-- Card 2: View Fee Payments -->
+    <a href="{{ url_for('admin.view_fee_payments') }}" class="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center text-center hover:shadow-xl transition-shadow duration-300">
+        <div class="p-4 bg-blue-100 rounded-full mb-4">
+            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900">View & Manage Payments</h3>
+        <p class="mt-2 text-sm text-gray-600">Review, search, edit, and delete fee payment records.</p>
+    </a>
+    <!-- Card 3: View Students -->
+    <a href="{{ url_for('student.view_students') }}" class="bg-white rounded-lg shadow-lg p-6 flex flex-col items-center text-center hover:shadow-xl transition-shadow duration-300">
+         <div class="p-4 bg-yellow-100 rounded-full mb-4">
+            <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900">View Student Records</h3>
+        <p class="mt-2 text-sm text-gray-600">Access student details for reference.</p>
+    </a>
+</div>
+{% endblock %}

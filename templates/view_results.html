@@ -1,0 +1,194 @@
+{% if session.role == 'teacher' %}
+    {% extends "teacher_base.html" %}
+{% elif session.role == 'school_admin' %}
+    {% extends "school_admin_base.html" %}
+{% else %}
+    {% extends "admin_base.html" %}
+{% endif %}
+
+{% block title %}Results Center{% endblock %}
+{% block header_title %}Results Center{% endblock %}
+
+{% block content %}
+<!-- View Mode Toggle -->
+<div class="mb-4">
+    <div class="inline-flex rounded-md shadow-sm">
+        <button id="view_by_student_btn" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-l-md">View by Student</button>
+        <button id="view_by_subject_btn" class="px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-600 rounded-r-md hover:bg-indigo-50">View by Subject</button>
+    </div>
+</div>
+<!-- Main Filter Controls -->
+<div class="bg-white p-4 rounded-lg shadow mb-6">
+    <div id="main_filters" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div>
+            <label for="class_filter" class="block text-sm font-medium text-gray-700">1. Select a Class</label>
+            <select id="class_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                <option value=""> Select a Class </option>
+                {% for c in classes %}<option value="{{ c.class_id }}">{{ c.class_name|title }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="term_filter" class="block text-sm font-medium text-gray-700">2. Select a Term</label>
+            <select id="term_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                <option value="">Select a Term</option>
+                <option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option>
+            </select>
+        </div>
+        <div>
+            <label for="year_filter" class="block text-sm font-medium text-gray-700">Academic Year</label>
+            <input type="text" id="year_filter" placeholder="e.g., 2024/2025" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+        </div>
+    </div>
+</div>
+<!-- View by Student: Student List & Search -->
+<div id="student_list_section" class="bg-white p-4 rounded-lg shadow mb-6 hidden">
+    <label for="student_search" class="block text-sm font-medium text-gray-700">3. Select a Student</label>
+    <input type="text" id="student_search" placeholder="Search for a student..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+    <div id="student_list_container" class="mt-2 max-h-60 overflow-y-auto"></div>
+</div>
+<!-- View by Subject: Subject Filter -->
+<div id="subject_filter_section" class="bg-white p-4 rounded-lg shadow mb-6 hidden">
+    <label for="subject_filter" class="block text-sm font-medium text-gray-700">3. Select a Subject</label>
+    <select id="subject_filter" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></select>
+</div>
+<!-- Results Display Area -->
+<div id="results_display_section" class="hidden"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentView = 'student';
+    let allStudents = [];
+    let allSubjects = [];
+    const viewByStudentBtn = document.getElementById('view_by_student_btn');
+    const viewBySubjectBtn = document.getElementById('view_by_subject_btn');
+    const classSelect = document.getElementById('class_filter');
+    const termSelect = document.getElementById('term_filter');
+    const yearInput = document.getElementById('year_filter');
+    const studentListSection = document.getElementById('student_list_section');
+    const studentSearch = document.getElementById('student_search');
+    const studentListContainer = document.getElementById('student_list_container');
+    const subjectFilterSection = document.getElementById('subject_filter_section');
+    const subjectSelect = document.getElementById('subject_filter');
+    const resultsDisplay = document.getElementById('results_display_section');
+    const userRole = "{{ session.role }}";
+
+    function updateView() {
+        resultsDisplay.classList.add('hidden');
+        if (currentView === 'student') {
+            viewByStudentBtn.className = "px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-l-md";
+            viewBySubjectBtn.className = "px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-600 rounded-r-md hover:bg-indigo-50";
+            subjectFilterSection.classList.add('hidden');
+            if (classSelect.value) studentListSection.classList.remove('hidden');
+        } else {
+            viewBySubjectBtn.className = "px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-r-md";
+            viewByStudentBtn.className = "px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-600 rounded-l-md hover:bg-indigo-50";
+            studentListSection.classList.add('hidden');
+            if (classSelect.value) subjectFilterSection.classList.remove('hidden');
+        }
+    }
+
+    function fetchStudentsAndSubjects() {
+        const classId = classSelect.value;
+        const className = classSelect.options[classSelect.selectedIndex].text;
+        resultsDisplay.classList.add('hidden');
+        if (!classId) {
+            studentListSection.classList.add('hidden');
+            subjectFilterSection.classList.add('hidden');
+            return;
+        }
+        const studentFormData = new FormData();
+        studentFormData.append('class_name', className);
+        fetch("{{ url_for('teacher.get_students_for_results') }}", { method: 'POST', body: studentFormData })
+            .then(res => res.json()).then(data => { allStudents = data; renderStudentList(allStudents); });
+        
+        subjectSelect.innerHTML = '<option>Loading subjects...</option>';
+        fetch(`/curriculum/get_subjects_for_class/${classId}`)
+            .then(res => res.json()).then(data => {
+                allSubjects = data;
+                subjectSelect.innerHTML = '<option value="">-- Select a Subject --</option>';
+                allSubjects.forEach(s => subjectSelect.innerHTML += `<option value="${s.subject_name}">${s.subject_name}</option>`);
+            });
+        updateView();
+    }
+
+    function fetchReportCard(studentId) {
+        const term = termSelect.value;
+        const year = yearInput.value;
+        if (!studentId || !term || !year) { alert("Please select a term and academic year."); return; }
+        resultsDisplay.classList.remove('hidden');
+        resultsDisplay.innerHTML = '<p class="p-4">Loading report card...</p>';
+        const formData = new FormData();
+        formData.append('student_id', studentId);
+        formData.append('term', term);
+        formData.append('year', year);
+        fetch("{{ url_for('teacher.get_student_report_card') }}", { method: 'POST', body: formData })
+            .then(res => res.json()).then(data => { renderReportCard(data, term, year); });
+    }
+
+    function fetchSubjectReport() {
+        const className = classSelect.options[classSelect.selectedIndex].text;
+        const subject = subjectSelect.value;
+        const term = termSelect.value;
+        const year = yearInput.value;
+        if (!className || !subject || !term || !year) { resultsDisplay.classList.add('hidden'); return; }
+        resultsDisplay.classList.remove('hidden');
+        resultsDisplay.innerHTML = '<p class="p-4">Loading subject report...</p>';
+        const formData = new FormData();
+        formData.append('class_name', className);
+        formData.append('subject', subject);
+        formData.append('term', term);
+        formData.append('year', year);
+        fetch("{{ url_for('teacher.get_subject_report') }}", { method: 'POST', body: formData })
+            .then(res => res.json()).then(data => { renderSubjectReport(data, subject, className, term, year); });
+    }
+
+    function renderStudentList(students) {
+        studentListContainer.innerHTML = '';
+        if (students.length === 0) { studentListContainer.innerHTML = '<p class="p-2">No students found.</p>'; return; }
+        students.forEach(s => {
+            const div = document.createElement('div');
+            div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b';
+            div.textContent = `${s.last_name}, ${s.first_name} (${s.student_number})`;
+            div.dataset.studentId = s.student_id;
+            studentListContainer.appendChild(div);
+        });
+    }
+
+    function renderReportCard(data, term, year) {
+        let resultsHtml = data.results.map(res => {
+            const actions = (userRole === 'teacher' || userRole === 'school_admin') ? `<td class="px-6 py-4 whitespace-nowrap"><div class="flex space-x-2"><a href="/teachers/edit_result/${res.result_id}" class="text-indigo-600 text-sm">Edit</a><form action="/teachers/delete_result/${res.result_id}" method="POST" onsubmit="return confirm('Delete?');"><button type="submit" class="text-red-600 text-sm">Delete</button></form></div></td>` : '';
+            return `<tr class="hover:bg-gray-50"><td class="px-6 py-4">${res.subject}</td><td class="px-6 py-4 text-center">${res.ca_score}</td><td class="px-6 py-4 text-center">${res.midterm_score}</td><td class="px-6 py-4 text-center">${res.final_exam_score}</td><td class="px-6 py-4 text-center font-semibold">${res.final_score}</td><td class="px-6 py-4 text-center font-semibold">${res.grade}</td>${actions}</tr>`;
+        }).join('');
+        if (data.results.length === 0) resultsHtml = `<tr><td colspan="7" class="text-center p-4">No results found.</td></tr>`;
+        
+        resultsDisplay.innerHTML = `<div class="bg-white p-6 rounded-lg shadow"><h3 class="text-xl font-bold">Report Card</h3><div class="mt-2 mb-4 border-b pb-2"><p><strong>Student:</strong> ${data.student.first_name} ${data.student.last_name}</p><p><strong>Class:</strong> ${data.student.class_name}</p><p><strong>Term:</strong> ${term}, ${year}</p></div><table class="min-w-full"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs uppercase">Subject</th><th class="px-6 py-3 text-center text-xs uppercase">CA</th><th class="px-6 py-3 text-center text-xs uppercase">Midterm</th><th class="px-6 py-3 text-center text-xs uppercase">Final</th><th class="px-6 py-3 text-center text-xs uppercase">Overall</th><th class="px-6 py-3 text-center text-xs uppercase">Grade</th>${(userRole === 'teacher' || userRole === 'school_admin') ? '<th class="px-6 py-3 text-left text-xs uppercase">Actions</th>' : ''}</tr></thead><tbody>${resultsHtml}</tbody></table></div>`;
+    }
+
+    function renderSubjectReport(data, subject, className, term, year) {
+        let resultsHtml = data.map(res => `<tr class="hover:bg-gray-50"><td class="px-6 py-4">${res.last_name}, ${res.first_name}</td><td class="px-6 py-4">${res.student_number}</td><td class="px-6 py-4 text-center font-semibold">${res.final_score}</td><td class="px-6 py-4 text-center font-semibold">${res.grade}</td></tr>`).join('');
+        if (data.length === 0) resultsHtml = `<tr><td colspan="4" class="text-center p-4">No results found.</td></tr>`;
+
+        resultsDisplay.innerHTML = `<div class="bg-white p-6 rounded-lg shadow"><h3 class="text-xl font-bold">Subject Performance Report</h3><div class="mt-2 mb-4 border-b pb-2"><p><strong>Subject:</strong> ${subject}</p><p><strong>Class:</strong> ${className}</p><p><strong>Term:</strong> ${term}, ${year}</p></div><table class="min-w-full"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs uppercase">Student Name</th><th class="px-6 py-3 text-left text-xs uppercase">Student Number</th><th class="px-6 py-3 text-center text-xs uppercase">Overall Score</th><th class="px-6 py-3 text-center text-xs uppercase">Grade</th></tr></thead><tbody>${resultsHtml}</tbody></table></div>`;
+    }
+
+    viewByStudentBtn.addEventListener('click', () => { currentView = 'student'; updateView(); });
+    viewBySubjectBtn.addEventListener('click', () => { currentView = 'subject'; updateView(); });
+    classSelect.addEventListener('change', fetchStudentsAndSubjects);
+    termSelect.addEventListener('change', () => { if (currentView === 'subject') fetchSubjectReport(); else resultsDisplay.classList.add('hidden'); });
+    yearInput.addEventListener('input', () => { if (currentView === 'subject') fetchSubjectReport(); else resultsDisplay.classList.add('hidden'); });
+    studentSearch.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        const filtered = allStudents.filter(s => s.first_name.toLowerCase().includes(term) || s.last_name.toLowerCase().includes(term) || s.student_number.toLowerCase().includes(term));
+        renderStudentList(filtered);
+    });
+    studentListContainer.addEventListener('click', (e) => {
+        if (e.target && e.target.dataset.studentId) {
+            Array.from(studentListContainer.children).forEach(c => c.classList.remove('bg-gray-200'));
+            e.target.classList.add('bg-gray-200');
+            fetchReportCard(e.target.dataset.studentId);
+        }
+    });
+    subjectSelect.addEventListener('change', fetchSubjectReport);
+});
+</script>
+{% endblock %}

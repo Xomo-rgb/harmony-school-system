@@ -1,0 +1,103 @@
+{% if session.role == 'teacher' %}
+    {% extends "teacher_base.html" %}
+{% elif session.role == 'accounts' %}
+    {% extends "accounts_base.html" %}
+{% elif session.role == 'school_admin' %}
+    {% extends "school_admin_base.html" %}
+{% else %}
+    {% extends "admin_base.html" %}
+{% endif %}
+
+{% block title %}Student Profile{% endblock %}
+
+{% block header_title %}Student Profile{% endblock %}
+
+{% block content %}
+<div>
+    <!-- Student Header -->
+    <div class="bg-white p-6 rounded-lg shadow mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">{{ student.first_name }} {{ student.middle_name or '' }} {{ student.last_name }}</h2>
+        <p class="text-sm text-gray-600"><strong>Student Number:</strong> {{ student.student_number }} | <strong>Class:</strong> {{ student.class_name|title }}</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: Bio -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="font-semibold text-lg border-b pb-2 mb-4">Biographical Information</h3>
+                <dl class="space-y-2 text-sm">
+                    <div class="flex justify-between"><dt class="text-gray-600">Date of Birth:</dt><dd class="font-medium text-gray-800">{{ student.dob.strftime('%d %B %Y') if student.dob else 'N/A' }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-600">Gender:</dt><dd class="font-medium text-gray-800">{{ student.gender|title }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-600">Guardian Contact:</dt><dd class="font-medium text-gray-800">{{ student.guardian_contact }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-600">Enrollment Date:</dt><dd class="font-medium text-gray-800">{{ student.enrollment_date.strftime('%d %B %Y') if student.enrollment_date else 'N/A' }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-600">Government ID:</dt><dd class="font-medium text-gray-800">{{ student.government_number or 'N/A' }}</dd></div>
+                    <div><dt class="text-gray-600">Address:</dt><dd class="font-medium text-gray-800 mt-1">{{ student.address }}</dd></div>
+                    <div><dt class="text-gray-600">Special Needs:</dt><dd class="font-medium text-gray-800 mt-1">{{ student.special_needs or 'None' }}</dd></div>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Right Column: Results & Fees -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Academic History -->
+            <div class="bg-white rounded-lg shadow">
+                <h3 class="font-semibold text-lg p-4 border-b">Academic History</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Year</th>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Term</th>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Subject</th>
+                                <th class="px-4 py-2 text-center font-medium text-gray-600">Overall</th>
+                                <th class="px-4 py-2 text-center font-medium text-gray-600">Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            {% for result in results %}
+                            <tr>
+                                <td class="px-4 py-2">{{ result.year }}</td>
+                                <td class="px-4 py-2">{{ result.term }}</td>
+                                <td class="px-4 py-2 font-medium">{{ result.subject }}</td>
+                                <td class="px-4 py-2 text-center">{{ result.final_score }}</td>
+                                <td class="px-4 py-2 text-center font-bold">{{ result.grade }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center p-4 text-gray-500">No exam results found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Fee Payment History -->
+            <div class="bg-white rounded-lg shadow">
+                <h3 class="font-semibold text-lg p-4 border-b">Fee Payment History</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Payment Date</th>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Academic Year</th>
+                                <th class="px-4 py-2 text-left font-medium text-gray-600">Term</th>
+                                <th class="px-4 py-2 text-right font-medium text-gray-600">Amount Paid</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            {% for payment in payments %}
+                            <tr>
+                                <td class="px-4 py-2">{{ payment.payment_date.strftime('%d-%b-%Y') }}</td>
+                                <td class="px-4 py-2">{{ payment.academic_year }}</td>
+                                <td class="px-4 py-2">{{ payment.term }}</td>
+                                <td class="px-4 py-2 text-right font-medium">{{ "%.2f"|format(payment.amount_paid) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="text-center p-4 text-gray-500">No fee payments found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

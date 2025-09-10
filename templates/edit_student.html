@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Student</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="mb-6 flex items-center justify-between">
+            <h2 class="text-2xl font-bold text-gray-800">Edit Student Information</h2>
+            <a href="{{ url_for('student.view_students') }}"
+               class="flex items-center text-sm text-gray-600 hover:text-green-600">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                Back to Student List
+            </a>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="mb-4 space-y-2">
+              {% for category, message in messages %}
+                <div class="p-3 rounded-md text-sm
+                           {% if category == 'error' %} bg-red-100 text-red-800 border border-red-200 {% endif %}
+                           {% if category == 'success' %} bg-green-100 text-green-800 border border-green-200 {% endif %}">
+                  {{ message }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post" action="{{ url_for('student.edit_student', student_id=student.student_id) }}" class="bg-white shadow-md rounded-lg p-6 space-y-6">
+            <!-- Personal Information Section -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                    <input type="text" id="first_name" name="first_name" value="{{ student.first_name or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+                <div>
+                    <label for="middle_name" class="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                    <input type="text" id="middle_name" name="middle_name" value="{{ student.middle_name or '' }}"
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+                <div>
+                    <label for="last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                    <input type="text" id="last_name" name="last_name" value="{{ student.last_name or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+            </div>
+
+            <!-- Academic and Demographic Section -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="dob" class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                    <input type="date" id="dob" name="dob" value="{{ student.dob or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label for="gender" class="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                    <select id="gender" name="gender" required
+                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        <option value="female" {% if student.gender == 'female' %}selected{% endif %}>Female</option>
+                        <option value="male" {% if student.gender == 'male' %}selected{% endif %}>Male</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="class_name" class="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                    <select id="class_name" name="class_name" required
+                            class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        {% set classes = ['nursery', 'reception', 'standard 1', 'standard 2', 'standard 3', 'standard 4', 'standard 5', 'standard 6'] %}
+                        {% for cls in classes %}
+                            <option value="{{ cls }}" {% if student.class_name == cls %}selected{% endif %}>{{ cls|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Contact and Official Information -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="guardian_contact" class="block text-sm font-medium text-gray-700 mb-1">Guardian's Phone Number</label>
+                    <input type="tel" id="guardian_contact" name="guardian_contact" value="{{ student.guardian_contact or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+                <div>
+                    <label for="government_number" class="block text-sm font-medium text-gray-700 mb-1">Government Number</label>
+                    <input type="text" id="government_number" name="government_number" value="{{ student.government_number or '' }}"
+                           placeholder="Enter government assigned number"
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+            </div>
+
+            <!-- Additional Information -->
+            <div>
+                <label for="special_needs" class="block text-sm font-medium text-gray-700 mb-1">Special Needs / Medical Information</label>
+                <textarea name="special_needs" id="special_needs" rows="3"
+                          class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
+                          placeholder="Enter any medical conditions or special needs">{{ student.special_needs or '' }}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <input type="text" id="address" name="address" value="{{ student.address or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                </div>
+                <div>
+                    <label for="enrollment_date" class="block text-sm font-medium text-gray-700 mb-1">Date of Enrollment</label>
+                    <input type="date" id="enrollment_date" name="enrollment_date" value="{{ student.enrollment_date or '' }}" required
+                           class="w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex justify-end space-x-3 pt-4">
+                <a href="{{ url_for('student.view_students') }}"
+                   class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    Update Student
+                </button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

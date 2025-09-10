@@ -1,0 +1,103 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Manage Teacher Assignments{% endblock %}
+
+{% block header_title %}Manage Teacher Assignments{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-6">
+        <h3 class="text-xl font-bold text-gray-800">Assigning Classes for: {{ teacher.full_name }}</h3>
+        <p class="text-sm text-gray-600">First select a class, then select a subject from that class's specific curriculum.</p>
+    </div>
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}<div class="mb-4 space-y-2">{% for c, m in messages %}<div class="p-3 rounded-md text-sm {%if c=='error'%}bg-red-100 text-red-800 border border-red-200{%endif%}{%if c=='success'%}bg-green-100 text-green-800 border border-green-200{%endif%}{%if c=='warning'%}bg-yellow-100 text-yellow-800 border border-yellow-200{%endif%}">{{m}}</div>{% endfor %}</div>{% endif %}
+    {% endwith %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- New Assignment Form -->
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h4 class="text-lg font-semibold text-gray-700 mb-4 border-b pb-2">Add New Assignment</h4>
+            <form id="assignmentForm" method="POST" action="{{ url_for('assignment.add_assignment', teacher_user_id=teacher.user_id) }}" class="space-y-4">
+                <div>
+                    <label for="class_id" class="block text-sm font-medium text-gray-700">1. Select a Class</label>
+                    <select id="class_id" name="class_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                        <option value="" disabled selected>-- Select a Class --</option>
+                        {% for class in all_classes %}
+                        <option value="{{ class.class_id }}">{{ class.class_name|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="subject_id" class="block text-sm font-medium text-gray-700">2. Select a Subject (from Curriculum)</label>
+                    <select id="subject_id" name="subject_id" required disabled class="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100 cursor-not-allowed">
+                        <option value="" disabled selected>-- Select a class first --</option>
+                    </select>
+                </div>
+                <div class="text-right">
+                    <button id="assignButton" type="submit" disabled class="bg-gray-400 text-white px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
+                        Assign
+                    </button>
+                </div>
+            </form>
+        </div>
+        <!-- Current Assignments List -->
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h4 class="text-lg font-semibold text-gray-700 mb-4 border-b pb-2">Current Assignments</h4>
+            {% if current_assignments %}<ul class="space-y-2">{% for a in current_assignments %}<li class="flex justify-between items-center bg-gray-50 p-2 rounded-md"><div><span class="font-medium text-gray-800">{{ a.class_name|title }}</span><span class="text-gray-500">- {{ a.subject_name }}</span></div><form method="POST" action="{{ url_for('assignment.remove_assignment', assignment_id=a.assignment_id) }}" onsubmit="return confirm('Are you sure?');"><button type="submit" class="text-red-500 hover:text-red-700 text-sm font-medium">Remove</button></form></li>{% endfor %}</ul>
+            {% else %}<p class="text-center text-gray-500 text-sm py-4">This teacher has no assignments yet.</p>{% endif %}
+        </div>
+    </div>
+    <div class="mt-8"><a href="{{ url_for('user.view_users') }}" class="text-sm font-medium text-gray-600 hover:text-green-600">&larr; Back to User List</a></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const classSelect = document.getElementById('class_id');
+    const subjectSelect = document.getElementById('subject_id');
+    const assignButton = document.getElementById('assignButton');
+
+    classSelect.addEventListener('change', function() {
+        const classId = this.value;
+        subjectSelect.innerHTML = '<option value="" disabled selected>-- Loading... --</option>';
+        subjectSelect.disabled = true;
+        subjectSelect.classList.add('cursor-not-allowed', 'bg-gray-100');
+        assignButton.disabled = true;
+        assignButton.classList.replace('bg-green-600', 'bg-gray-400');
+        assignButton.classList.add('cursor-not-allowed');
+
+        if (!classId) return;
+
+        fetch(`/curriculum/get_subjects_for_class/${classId}`)
+            .then(response => response.json())
+            .then(data => {
+                subjectSelect.innerHTML = '<option value="" disabled selected>-- Select a Subject --</option>';
+                if (data.length > 0) {
+                    data.forEach(subject => {
+                        const option = document.createElement('option');
+                        option.value = subject.subject_id;
+                        option.textContent = subject.subject_name;
+                        subjectSelect.appendChild(option);
+                    });
+                    subjectSelect.disabled = false;
+                    subjectSelect.classList.remove('cursor-not-allowed', 'bg-gray-100');
+                } else {
+                    subjectSelect.innerHTML = '<option value="" disabled selected>-- No subjects in curriculum --</option>';
+                }
+            });
+    });
+
+    subjectSelect.addEventListener('change', function() {
+        if (this.value) {
+            assignButton.disabled = false;
+            assignButton.classList.replace('bg-gray-400', 'bg-green-600');
+            assignButton.classList.remove('cursor-not-allowed');
+        } else {
+            assignButton.disabled = true;
+            assignButton.classList.replace('bg-green-600', 'bg-gray-400');
+            assignButton.classList.add('cursor-not-allowed');
+        }
+    });
+});
+</script>
+{% endblock %}

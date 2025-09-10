@@ -1,0 +1,95 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Add New User{% endblock %}
+
+{% block header_title %}Add New User{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4 space-y-2">
+          {% for category, message in messages %}
+            <div class="p-3 rounded-md text-sm
+                       {% if category == 'error' %} bg-red-100 text-red-800 border border-red-200 {% endif %}
+                       {% if category == 'success' %} bg-green-100 text-green-800 border border-green-200 {% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="bg-white p-8 rounded-lg shadow-lg">
+        <form id="addUserForm" method="POST" action="{{ url_for('user.add_user') }}" class="space-y-6">
+            {% set form_data = form_data or {} %}
+            <div>
+                <label for="full_name" class="block text-sm font-medium text-gray-700">Full Name</label>
+                <input type="text" id="full_name" name="full_name" value="{{ form_data.full_name or '' }}" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+            </div>
+
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700">Email Address</label>
+                <input type="email" id="email" name="email" value="{{ form_data.email or '' }}" required
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+            </div>
+            
+            <div>
+                <label for="role" class="block text-sm font-medium text-gray-700">Assign Role</label>
+                <select id="role" name="role" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+                    <option value="" {% if not form_data.role %}selected{% endif %} disabled>-- Select a Role --</option>
+                    <option value="teacher" {% if form_data.role == 'teacher' %}selected{% endif %}>Teacher</option>
+                    <option value="accounts" {% if form_data.role == 'accounts' %}selected{% endif %}>Accounts</option>
+                    <option value="school_admin" {% if form_data.role == 'school_admin' %}selected{% endif %}>School Admin</option>
+                    <option value="system_admin" {% if form_data.role == 'system_admin' %}selected{% endif %}>System Admin</option>
+                </select>
+            </div>
+            
+            <!-- *** FIXED HERE: Changed id and name to 'phone' *** -->
+            <div id="phone_field" class="hidden">
+                <label for="phone" class="block text-sm font-medium text-gray-700">Teacher's Phone Number</label>
+                <input type="tel" id="phone" name="phone" value="{{ form_data.phone or '' }}"
+                       placeholder="Enter phone number for teacher"
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500">
+            </div>
+            
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 text-sm text-yellow-700">
+                <p><strong>Note:</strong> A default password of <strong>password123</strong> will be assigned. The user should change it on first login.</p>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4">
+                <a href="{{ url_for('user.view_users') }}"
+                   class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md shadow-sm hover:bg-green-700">
+                    Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.getElementById('role');
+    // --- FIXED HERE: Changed ID to 'phone_field' ---
+    const phoneFieldDiv = document.getElementById('phone_field');
+
+    function togglePhoneField() {
+        if (roleSelect.value === 'teacher') {
+            phoneFieldDiv.classList.remove('hidden');
+        } else {
+            phoneFieldDiv.classList.add('hidden');
+        }
+    }
+
+    togglePhoneField();
+    roleSelect.addEventListener('change', togglePhoneField);
+});
+</script>
+{% endblock %}

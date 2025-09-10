@@ -1,0 +1,122 @@
+{% extends "teacher_base.html" %}
+
+{% block title %}Enter Exam Results{% endblock %}
+
+{% block header_title %}Enter Exam Results{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-lg">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}<div class="mb-4 space-y-2">{% for c, m in messages %}<div class="p-3 rounded-md text-sm {%if c=='error'%}bg-red-100 text-red-800 border border-red-200{%endif%}{%if c=='success'%}bg-green-100 text-green-800 border border-green-200{%endif%}{%if c=='warning'%}bg-yellow-100 text-yellow-800 border border-yellow-200{%endif%}">{{m}}</div>{% endfor %}</div>{% endif %}
+    {% endwith %}
+
+    {% if classes %}
+    <form method="POST" action="{{ url_for('teacher.enter_results') }}" class="space-y-6">
+        <div>
+            <label for="class_name" class="block text-sm font-medium text-gray-700">1. Select Your Assigned Class</label>
+            <select name="class_name" id="class_name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500">
+                <option value="" selected disabled>-- Select a Class --</option>
+                {% for class in classes %}
+                <option value="{{ class }}">{{ class|title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div id="student_selector" class="hidden">
+            <label for="student_id" class="block text-sm font-medium text-gray-700">2. Select Student</label>
+            <select name="student_id" id="student_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500"></select>
+            <p id="loading_students" class="text-sm text-gray-500 mt-1 hidden">Loading students...</p>
+        </div>
+        <div id="result_fields" class="hidden pt-4 border-t border-gray-200 space-y-4">
+            <h3 class="text-lg font-medium text-gray-900">3. Enter Scores</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="subject" class="block text-sm font-medium text-gray-700">Subject</label>
+                    <input type="text" name="subject" id="subject" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label for="academic_year" class="block text-sm font-medium text-gray-700">Academic Year</label>
+                    <input type="text" name="academic_year" id="academic_year" required placeholder="e.g., 2025" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label for="ca_score" class="block text-sm font-medium text-gray-700">CA Score</label>
+                    <input type="number" name="ca_score" id="ca_score" min="0" max="100" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label for="midterm_score" class="block text-sm font-medium text-gray-700">Midterm Score</label>
+                    <input type="number" name="midterm_score" id="midterm_score" min="0" max="100" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+                <div>
+                    <label for="final_exam_score" class="block text-sm font-medium text-gray-700">Final Exam Score</label>
+                    <input type="number" name="final_exam_score" id="final_exam_score" min="0" max="100" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+            </div>
+            <div>
+                <label for="term" class="block text-sm font-medium text-gray-700">Term</label>
+                <select name="term" id="term" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                </select>
+            </div>
+            <div class="text-right">
+                <button type="submit" class="bg-cyan-600 text-white px-6 py-2 rounded-md hover:bg-cyan-700 transition duration-200">Submit Result</button>
+            </div>
+        </div>
+    </form>
+    {% else %}
+        <p class="text-center text-gray-600">You are not assigned to any classes. Please contact an administrator.</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const classSelect = document.getElementById('class_name');
+    const studentSelectorDiv = document.getElementById('student_selector');
+    const studentSelect = document.getElementById('student_id');
+    const loadingMessage = document.getElementById('loading_students');
+    const resultFieldsDiv = document.getElementById('result_fields');
+
+    classSelect.addEventListener('change', function() {
+        const selectedClass = this.value;
+        if (!selectedClass) return;
+
+        loadingMessage.classList.remove('hidden');
+        studentSelectorDiv.classList.remove('hidden');
+        studentSelect.innerHTML = '<option value="" selected disabled>-- Loading... --</option>';
+        resultFieldsDiv.classList.add('hidden');
+
+        const formData = new FormData();
+        formData.append('class_name', selectedClass);
+
+        // *** THE FIX IS HERE: Calling the correct endpoint ***
+        fetch("{{ url_for('teacher.get_students_for_class_list') }}", { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                loadingMessage.classList.add('hidden');
+                studentSelect.innerHTML = '<option value="" selected disabled>-- Select a Student --</option>';
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                data.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.student_id;
+                    option.textContent = `${student.last_name}, ${student.first_name} (${student.student_number})`;
+                    studentSelect.appendChild(option);
+                });
+            });
+    });
+
+    studentSelect.addEventListener('change', function() {
+        if (this.value) {
+            resultFieldsDiv.classList.remove('hidden');
+        } else {
+            resultFieldsDiv.classList.add('hidden');
+        }
+    });
+});
+</script>
+{% endblock %}

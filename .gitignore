@@ -1,0 +1,16 @@
+# Python virtual environment folder
+venv/
+__pycache__/
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+
+# Sensitive configuration file - THIS IS THE MOST IMPORTANT LINE
+config.py
+
+# Temporary utility scripts that we don't need in production
+hash_passwords.py
+reset_all_passwords.py
+get_new_password.py
+temp_hasher.py
