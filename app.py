@@ -9,12 +9,15 @@ from routes.assignment import assignment_bp
 from routes.profile import profile_bp
 from routes.curriculum import curriculum_bp
 from db import close_db
+from whitenoise import WhiteNoise # <--- 1. IMPORT WHITENOISE
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config) # A more robust way to load config
-    
-    # Register blueprints
+    app.secret_key = Config.SECRET_KEY
+    app.debug = Config.DEBUG
+
+    app.teardown_appcontext(close_db)
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp, url_prefix='/students')
     app.register_blueprint(teacher_bp, url_prefix='/teachers')
@@ -24,19 +27,18 @@ def create_app():
     app.register_blueprint(profile_bp, url_prefix='/profile')
     app.register_blueprint(curriculum_bp, url_prefix='/curriculum')
 
-    # Register the teardown function
-    app.teardown_appcontext(close_db)
-
     @app.route('/')
     def index():
         return redirect(url_for('auth.login'))
 
     return app
 
-# --- THE FIX IS HERE ---
-# We create the app instance in the global scope
 app = create_app()
 
+# --- THE FIX IS HERE ---
+# Tell our app to use whitenoise to serve files from the 'static' folder
+app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/')
+
+
 if __name__ == "__main__":
-    # This part is now only used for local development
-    app.run(debug=True)
+    app.run()
