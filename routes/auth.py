@@ -1,7 +1,11 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from db import get_db_connection
 from werkzeug.security import check_password_hash
-from utils import log_activity # <-- Import the logger
+from utils import log_activity
+# --- CHANGES START HERE ---
+import psycopg2
+import psycopg2.extras
+# --- CHANGES END HERE ---
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -19,13 +23,15 @@ def login():
             return redirect(url_for('auth.login'))
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        # --- THE MAIN FIX IS HERE ---
+        # Replace 'dictionary=True' with the correct cursor factory for psycopg2
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute("SELECT user_id, full_name, email, password, role FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
+        # Always close the cursor when you are done with it
+        cursor.close()
 
         if user and check_password_hash(user['password'], password):
-            # --- LOG SUCCESSFUL LOGIN ---
-            # We pass the user info directly because they aren't in the session yet
             log_activity(f"User logged in successfully.", user_id=user['user_id'], user_full_name=user['full_name'])
 
             session['user_id'] = user['user_id']
@@ -46,9 +52,7 @@ def login():
                 flash("Your user role is undefined. Please contact an administrator.", "error")
                 return redirect(url_for('auth.login'))
         else:
-            # --- LOG FAILED LOGIN ATTEMPT ---
             log_activity(f"Failed login attempt for email: '{email}'.")
-            
             flash("Invalid email or password. Please try again.", "error")
             return redirect(url_for('auth.login'))
 
@@ -56,8 +60,6 @@ def login():
 
 @auth_bp.route('/logout')
 def logout():
-    # --- LOG LOGOUT ---
-    # We log this before clearing the session so we know who logged out
     if 'full_name' in session:
         log_activity(f"User '{session['full_name']}' logged out.")
 
