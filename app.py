@@ -39,25 +39,6 @@ def create_app():
     def index():
         return redirect(url_for('auth.login'))
 
-    # --- ADDED FOR TESTING ---
-    # This route provides a simple way to check the database connection on Render.
-    @app.route('/test-db')
-    def test_db():
-        try:
-            # Use the corrected get_db_connection function from db.py
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            # Execute a simple query to verify the connection
-            cursor.execute("SELECT 1;")
-            cursor.close()
-            return "✅ Database connection successful!"
-        except psycopg2.Error as e:
-            # This will catch specific PostgreSQL errors (e.g., bad password)
-            return f"❌ Database connection failed: <pre>{e}</pre>"
-        except Exception as e:
-            # This will catch other errors (e.g., config variable not set)
-            return f"❌ An unexpected error occurred: <pre>{e}</pre>"
-    # --- END OF TEST ROUTE ---
 
     return app
 
