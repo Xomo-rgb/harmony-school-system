@@ -1,7 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from db import get_db_connection
 from utils import role_required, log_activity
-import mysql.connector
+# --- CHANGES START HERE ---
+import psycopg2
+import psycopg2.extras
+# --- CHANGES END HERE ---
 
 curriculum_bp = Blueprint('curriculum', __name__)
 
@@ -9,9 +12,14 @@ curriculum_bp = Blueprint('curriculum', __name__)
 @role_required('system_admin', 'school_admin')
 def manage():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # Use the correct cursor factory
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT class_id, class_name FROM classes ORDER BY class_id")
-    classes = cursor.fetchall()
+    classes_rows = cursor.fetchall()
+    
+    # Convert Row objects to dictionaries to make them mutable
+    classes = [dict(c) for c in classes_rows]
+
     for c in classes:
         cursor.execute("""
             SELECT s.subject_name, curr.curriculum_id
@@ -21,8 +29,10 @@ def manage():
             ORDER BY s.subject_name
         """, (c['class_id'],))
         c['subjects'] = cursor.fetchall()
+        
     cursor.execute("SELECT subject_id, subject_name FROM subjects ORDER BY subject_name")
     all_subjects = cursor.fetchall()
+    cursor.close()
     return render_template('manage_curriculum.html', 
                            classes=classes, 
                            all_subjects=all_subjects)
@@ -47,11 +57,15 @@ def add_subject_to_class():
         conn.commit()
         log_activity(f"Added subject ID {subject_id} to class ID {class_id} in curriculum.")
         flash("Subject added to curriculum successfully.", "success")
-    except mysql.connector.Error as err:
-        if err.errno == 1062:
+    # --- CHANGE HERE: Catch the correct error type and code ---
+    except psycopg2.Error as err:
+        # PostgreSQL code for unique violation is '23505'
+        if err.pgcode == '23505':
             flash("This subject is already part of this class's curriculum.", "warning")
         else:
             flash(f"A database error occurred: {err}", "error")
+    finally:
+        cursor.close()
     
     return redirect(url_for('curriculum.manage'))
 
@@ -62,6 +76,7 @@ def remove_subject_from_class(curriculum_id):
     cursor = conn.cursor()
     cursor.execute("DELETE FROM curriculum WHERE curriculum_id = %s", (curriculum_id,))
     conn.commit()
+    cursor.close()
     log_activity(f"Removed curriculum link ID {curriculum_id}.")
     flash("Subject removed from curriculum successfully.", "success")
     return redirect(url_for('curriculum.manage'))
@@ -70,7 +85,7 @@ def remove_subject_from_class(curriculum_id):
 @role_required('system_admin', 'school_admin')
 def get_subjects_for_class(class_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("""
         SELECT s.subject_id, s.subject_name
         FROM curriculum c
@@ -78,5 +93,7 @@ def get_subjects_for_class(class_id):
         WHERE c.class_id = %s
         ORDER BY s.subject_name
     """, (class_id,))
-    subjects = cursor.fetchall()
+    # Convert to list of dicts for reliable JSON conversion
+    subjects = [dict(row) for row in cursor.fetchall()]
+    cursor.close()
     return jsonify(subjects)

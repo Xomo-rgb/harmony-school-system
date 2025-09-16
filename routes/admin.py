@@ -1,6 +1,10 @@
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request, jsonify
 from db import get_db_connection
 from utils import role_required, log_activity
+# --- CHANGES START HERE ---
+import psycopg2
+import psycopg2.extras
+# --- CHANGES END HERE ---
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -9,15 +13,17 @@ admin_bp = Blueprint('admin', __name__)
 @role_required('system_admin')
 def view_logs():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # Use the correct cursor factory
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT user_full_name, action, timestamp FROM activity_logs ORDER BY timestamp DESC")
     logs = cursor.fetchall()
+    cursor.close()
     return render_template('view_logs.html', logs=logs)
 
 # --- Fee Payment Functions ---
 def _get_filtered_fee_payments(selected_year, selected_term, selected_class):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     query = "SELECT fp.payment_id, s.student_number, s.first_name, s.middle_name, s.last_name, fp.amount_paid, fp.payment_date, fp.term, fp.academic_year, s.class_name FROM fee_payments fp JOIN students s ON fp.student_id = s.student_id"
     filters = []
     params = []
@@ -34,7 +40,9 @@ def _get_filtered_fee_payments(selected_year, selected_term, selected_class):
         query += " WHERE " + " AND ".join(filters)
     query += " ORDER BY fp.payment_date DESC"
     cursor.execute(query, tuple(params))
-    return cursor.fetchall()
+    results = cursor.fetchall()
+    cursor.close()
+    return results
 
 @admin_bp.route('/fee_payment_form')
 @role_required('accounts')
@@ -58,16 +66,18 @@ def submit_fee():
         flash("Invalid amount entered. Please use numbers only.", "error")
         return redirect(url_for('admin.fee_payment_form'))
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT student_id, first_name, last_name FROM students WHERE student_number = %s", (student_number,))
     student = cursor.fetchone()
     if not student:
         flash("Student number not found.", "error")
+        cursor.close()
         return redirect(url_for('admin.fee_payment_form'))
     student_id = student['student_id']
     student_name = f"{student['first_name']} {student.get('last_name', '')}".strip()
     cursor.execute("INSERT INTO fee_payments (student_id, amount_paid, payment_date, term, academic_year) VALUES (%s, %s, %s, %s, %s)", (student_id, amount_paid, payment_date, term, academic_year))
     conn.commit()
+    cursor.close()
     log_activity(f"Recorded fee payment of {amount_paid} for student '{student_name}' ({student_number}).")
     flash("Fee payment recorded successfully.", "success")
     return redirect(url_for('admin.fee_payment_form'))
@@ -76,13 +86,14 @@ def submit_fee():
 @role_required('system_admin', 'school_admin', 'accounts')
 def view_fee_payments():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT DISTINCT academic_year FROM fee_payments ORDER BY academic_year DESC")
     academic_years = [row['academic_year'] for row in cursor.fetchall()]
     cursor.execute("SELECT DISTINCT term FROM fee_payments ORDER BY term")
     terms = [row['term'] for row in cursor.fetchall()]
     cursor.execute("SELECT DISTINCT class_name FROM classes ORDER BY class_name")
     classes = [row['class_name'] for row in cursor.fetchall()]
+    cursor.close()
     return render_template('view_fee_payments.html', academic_years=academic_years, terms=terms, classes=classes)
 
 @admin_bp.route('/filter_fee_payments', methods=['POST'])
@@ -94,14 +105,17 @@ def filter_fee_payments():
     results = _get_filtered_fee_payments(selected_year, selected_term, selected_class)
     payments = []
     for r in results:
-        payments.append({"payment_id": r["payment_id"], "student_number": r["student_number"], "full_name": f"{r['first_name']} {r.get('middle_name') or ''} {r['last_name']}".replace('  ', ' '), "amount_paid": r["amount_paid"], "payment_date": r["payment_date"].strftime("%Y-%m-%d"), "term": r["term"], "academic_year": r["academic_year"], "class_name": r["class_name"]})
+        r_dict = dict(r)
+        r_dict["full_name"] = f"{r_dict['first_name']} {r_dict.get('middle_name') or ''} {r_dict['last_name']}".replace('  ', ' ')
+        r_dict["payment_date"] = r_dict["payment_date"].strftime("%Y-%m-%d")
+        payments.append(r_dict)
     return jsonify({"payments": payments})
 
 @admin_bp.route('/edit_fee/<int:payment_id>', methods=['GET', 'POST'])
 @role_required('accounts')
 def edit_fee(payment_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if request.method == 'POST':
         amount_paid = request.form.get('amount_paid')
         payment_date = request.form.get('payment_date')
@@ -117,30 +131,39 @@ def edit_fee(payment_id):
             return redirect(url_for('admin.edit_fee', payment_id=payment_id))
         cursor.execute("UPDATE fee_payments SET amount_paid = %s, payment_date = %s, term = %s, academic_year = %s WHERE payment_id = %s", (amount_paid, payment_date, term, academic_year, payment_id))
         conn.commit()
+        cursor.close()
         log_activity(f"Edited fee payment record (ID: {payment_id}).")
         flash("Fee payment updated successfully.", "success")
         return redirect(url_for('admin.view_fee_payments'))
+    
     cursor.execute("SELECT fp.*, s.student_number, s.first_name, s.middle_name, s.last_name FROM fee_payments fp JOIN students s ON fp.student_id = s.student_id WHERE fp.payment_id = %s", (payment_id,))
     payment = cursor.fetchone()
+    cursor.close()
     if not payment:
         flash("Fee payment record not found.", "error")
         return redirect(url_for('admin.view_fee_payments'))
-    if payment['payment_date']:
-        payment['payment_date'] = payment['payment_date'].strftime('%Y-%m-%d')
-    return render_template('edit_fee.html', payment=payment)
+    
+    # Convert Row object to a mutable dictionary to modify it
+    payment_dict = dict(payment)
+    if payment_dict.get('payment_date'):
+        payment_dict['payment_date'] = payment_dict['payment_date'].strftime('%Y-%m-%d')
+    return render_template('edit_fee.html', payment=payment_dict)
+
 
 @admin_bp.route('/delete_fee/<int:payment_id>', methods=['POST'])
 @role_required('accounts')
 def delete_fee(payment_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT s.student_number FROM fee_payments fp JOIN students s ON fp.student_id = s.student_id WHERE payment_id = %s", (payment_id,))
     payment_to_delete = cursor.fetchone()
     if not payment_to_delete:
         flash("Payment record not found.", "error")
+        cursor.close()
         return redirect(url_for('admin.view_fee_payments'))
     cursor.execute("DELETE FROM fee_payments WHERE payment_id = %s", (payment_id,))
     conn.commit()
+    cursor.close()
     student_number = payment_to_delete['student_number']
     log_activity(f"Deleted fee payment record (ID: {payment_id}) for student {student_number}.")
     flash("Fee payment deleted successfully.", "success")
@@ -155,7 +178,7 @@ def unauthorized():
 @role_required('system_admin')
 def system_admin_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT COUNT(*) as count FROM students")
     total_students = cursor.fetchone()['count']
     cursor.execute("SELECT COUNT(*) as count FROM users WHERE role = 'teacher'")
@@ -166,30 +189,33 @@ def system_admin_dashboard():
     total_users = cursor.fetchone()['count']
     cursor.execute("SELECT full_name as user, 'User Created' as action, role as timestamp FROM users ORDER BY user_id DESC LIMIT 5")
     recent_activities = cursor.fetchall()
+    cursor.close()
     return render_template('system_admin_dashboard.html', total_students=total_students, total_teachers=total_teachers, total_classes=total_classes, total_users=total_users, recent_activities=recent_activities)
 
 @admin_bp.route('/accounts_dashboard', endpoint='accounts_dashboard')
 @role_required('accounts')
 def accounts_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT COUNT(payment_id) as count FROM fee_payments")
     payment_count = cursor.fetchone()['count']
     cursor.execute("SELECT SUM(amount_paid) as total FROM fee_payments")
     total_collected = cursor.fetchone()['total'] or 0
+    cursor.close()
     return render_template('accounts_dashboard.html', payment_count=payment_count, total_collected=total_collected)
 
 @admin_bp.route('/school_admin_dashboard', endpoint='school_admin_dashboard')
 @role_required('school_admin')
 def school_admin_dashboard():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT COUNT(*) as count FROM students")
     total_students = cursor.fetchone()['count']
     cursor.execute("SELECT COUNT(*) as count FROM users WHERE role = 'teacher'")
     total_teachers = cursor.fetchone()['count']
     cursor.execute("SELECT COUNT(DISTINCT class_name) as count FROM classes")
     total_classes = cursor.fetchone()['count']
+    cursor.close()
     return render_template('school_admin_dashboard.html', total_students=total_students, total_teachers=total_teachers, total_classes=total_classes)
 
 # --- AJAX ENDPOINTS FOR DASHBOARD CHARTS ---
@@ -197,9 +223,10 @@ def school_admin_dashboard():
 @role_required('system_admin')
 def get_students_per_class_data():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT class_name, COUNT(student_id) as student_count FROM students GROUP BY class_name ORDER BY class_name;")
     data = cursor.fetchall()
+    cursor.close()
     labels = [row['class_name'] for row in data]
     values = [row['student_count'] for row in data]
     return jsonify({'labels': labels, 'values': values})
@@ -208,9 +235,10 @@ def get_students_per_class_data():
 @role_required('system_admin')
 def get_users_by_role_data():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT role, COUNT(user_id) as user_count FROM users GROUP BY role ORDER BY role;")
     data = cursor.fetchall()
+    cursor.close()
     labels = [row['role'].replace('_', ' ').title() for row in data]
     values = [row['user_count'] for row in data]
     return jsonify({'labels': labels, 'values': values})

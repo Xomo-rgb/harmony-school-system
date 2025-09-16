@@ -1,19 +1,24 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from db import get_db_connection
-from utils import role_required, log_activity # <-- Import log_activity
+from utils import role_required, log_activity
+# --- CHANGES START HERE ---
+import psycopg2
+import psycopg2.extras
+# --- CHANGES END HERE ---
 
 assignment_bp = Blueprint('assignment', __name__)
 
 @assignment_bp.route('/manage/<int:teacher_user_id>')
 @role_required('system_admin', 'school_admin')
 def manage(teacher_user_id):
-    # ... (this function is unchanged)
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # Use the correct cursor factory
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT user_id, full_name FROM users WHERE user_id = %s AND role = 'teacher'", (teacher_user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         flash("Teacher not found.", "error")
+        cursor.close()
         return redirect(url_for('user.view_users'))
     cursor.execute("""
         SELECT ta.assignment_id, c.class_name, s.subject_name
@@ -29,6 +34,7 @@ def manage(teacher_user_id):
     all_classes = cursor.fetchall()
     cursor.execute("SELECT subject_id, subject_name FROM subjects ORDER BY subject_name")
     all_subjects = cursor.fetchall()
+    cursor.close()
     return render_template('manage_assignments.html',
                            teacher=teacher,
                            current_assignments=current_assignments,
@@ -46,12 +52,13 @@ def add_assignment(teacher_user_id):
         return redirect(url_for('assignment.manage', teacher_user_id=teacher_user_id))
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     cursor.execute("SELECT teacher_id, u.full_name FROM teachers t JOIN users u ON t.user_id = u.user_id WHERE t.user_id = %s", (teacher_user_id,))
     teacher = cursor.fetchone()
     if not teacher:
         flash("Teacher profile not found.", "error")
+        cursor.close()
         return redirect(url_for('user.view_users'))
     teacher_id = teacher['teacher_id']
     teacher_name = teacher['full_name']
@@ -70,6 +77,7 @@ def add_assignment(teacher_user_id):
     )
     if cursor.fetchone():
         flash("This teacher is already assigned to that class and subject.", "warning")
+        cursor.close()
         return redirect(url_for('assignment.manage', teacher_user_id=teacher_user_id))
 
     cursor.execute(
@@ -77,10 +85,9 @@ def add_assignment(teacher_user_id):
         (teacher_id, class_id, subject_id)
     )
     conn.commit()
+    cursor.close()
 
-    # --- LOG THE ACTIVITY ---
     log_activity(f"Assigned '{teacher_name}' to teach '{subject_name}' in '{class_name}'.")
-
     flash("Assignment added successfully.", "success")
     return redirect(url_for('assignment.manage', teacher_user_id=teacher_user_id))
 
@@ -88,9 +95,8 @@ def add_assignment(teacher_user_id):
 @role_required('system_admin', 'school_admin')
 def remove_assignment(assignment_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # --- Get details BEFORE deleting for the log message ---
     cursor.execute("""
         SELECT t.user_id, u.full_name, c.class_name, s.subject_name
         FROM teacher_assignments ta
@@ -104,9 +110,9 @@ def remove_assignment(assignment_id):
 
     cursor.execute("DELETE FROM teacher_assignments WHERE assignment_id = %s", (assignment_id,))
     conn.commit()
+    cursor.close()
     flash("Assignment removed successfully.", "success")
     
-    # --- LOG THE ACTIVITY ---
     if assignment_to_delete:
         teacher_name = assignment_to_delete['full_name']
         class_name = assignment_to_delete['class_name']

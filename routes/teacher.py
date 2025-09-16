@@ -2,13 +2,18 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from db import get_db_connection
 from utils import role_required, log_activity
 from datetime import datetime
+# --- CHANGES START HERE ---
+import psycopg2
+import psycopg2.extras
+# --- CHANGES END HERE ---
 
 teacher_bp = Blueprint('teacher', __name__)
 
 # --- Helper functions ---
 def get_teacher_assigned_classes(user_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # Use the correct cursor factory
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     query = """
         SELECT DISTINCT c.class_name
         FROM teacher_assignments ta
@@ -18,6 +23,7 @@ def get_teacher_assigned_classes(user_id):
     """
     cursor.execute(query, (user_id,))
     assigned_classes = [row['class_name'] for row in cursor.fetchall()]
+    cursor.close()
     return assigned_classes
 
 def calculate_grade(final_score):
@@ -36,24 +42,20 @@ def calculate_grade(final_score):
 def teacher_dashboard():
     user_id = session['user_id']
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Get the list of classes assigned to this teacher
     assigned_classes = get_teacher_assigned_classes(user_id)
     
     total_students = 0
     if assigned_classes:
-        # Create a string of placeholders for the query, e.g., (%s, %s, %s)
         placeholders = ', '.join(['%s'] * len(assigned_classes))
-        
-        # Query to count students only in the assigned classes
         query = f"SELECT COUNT(student_id) as count FROM students WHERE class_name IN ({placeholders})"
         cursor.execute(query, tuple(assigned_classes))
         result = cursor.fetchone()
         if result:
             total_students = result['count']
-
-    # Pass the stats to the template
+    
+    cursor.close()
     return render_template('teacher_dashboard.html', 
                            class_count=len(assigned_classes), 
                            student_count=total_students)
@@ -83,7 +85,7 @@ def enter_results():
             return redirect(url_for('teacher.enter_results'))
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         cursor.execute(
             "SELECT result_id FROM exam_results WHERE student_id = %s AND subject = %s AND term = %s AND year = %s",
@@ -91,6 +93,7 @@ def enter_results():
         )
         if cursor.fetchone():
             flash(f"A result for {subject} has already been entered for this student in this term. Please use 'View Results' to edit it.", "error")
+            cursor.close()
             return redirect(url_for('teacher.enter_results'))
 
         final_score = round((ca_score + midterm_score + final_exam_score) / 3)
@@ -106,6 +109,7 @@ def enter_results():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (student_id, subject, ca_score, midterm_score, final_exam_score, final_score, grade, term, academic_year))
         conn.commit()
+        cursor.close()
 
         log_activity(f"Entered exam result for '{student_name}' in '{subject}' for {term}, {academic_year}.")
         flash(f"Result for {subject} recorded successfully! Final score: {final_score}, Grade: {grade}", "success")
@@ -118,7 +122,7 @@ def enter_results():
 @role_required('teacher', 'system_admin', 'school_admin')
 def view_results():
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     user_id = session.get('user_id')
     if session.get('role') == 'teacher':
         cursor.execute("""
@@ -132,6 +136,7 @@ def view_results():
     else:
         cursor.execute("SELECT class_id, class_name FROM classes ORDER BY class_id")
     all_classes = cursor.fetchall()
+    cursor.close()
     return render_template('view_results.html', classes=all_classes)
 
 # --- Edit/Delete Functions ---
@@ -139,7 +144,7 @@ def view_results():
 @role_required('teacher', 'school_admin', 'system_admin')
 def edit_result(result_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if request.method == 'POST':
         try:
             ca_score = int(float(request.form['ca_score']))
@@ -154,14 +159,17 @@ def edit_result(result_id):
         result_details = cursor.fetchone()
         cursor.execute("UPDATE exam_results SET ca_score = %s, midterm_score = %s, final_exam_score = %s, final_score = %s, grade = %s WHERE result_id = %s", (ca_score, midterm_score, final_exam_score, final_score, grade, result_id))
         conn.commit()
+        cursor.close()
         if result_details:
             student_name = f"{result_details['first_name']} {result_details['last_name']}"
             subject = result_details['subject']
             log_activity(f"Edited exam result for '{student_name}' in '{subject}'.")
         flash("Result updated successfully.", "success")
         return redirect(url_for('teacher.view_results'))
+    
     cursor.execute("SELECT er.*, s.first_name, s.last_name, s.class_name FROM exam_results er JOIN students s ON er.student_id = s.student_id WHERE er.result_id = %s", (result_id,))
     result = cursor.fetchone()
+    cursor.close()
     if not result:
         flash("Exam result not found.", "error")
         return redirect(url_for('teacher.view_results'))
@@ -177,20 +185,23 @@ def edit_result(result_id):
 @role_required('teacher', 'school_admin', 'system_admin')
 def delete_result(result_id):
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT s.class_name, s.first_name, s.last_name, er.subject FROM exam_results er JOIN students s ON er.student_id = s.student_id WHERE er.result_id = %s", (result_id,))
     result_to_delete = cursor.fetchone()
     if not result_to_delete:
         flash("Result not found.", "error")
+        cursor.close()
         return redirect(url_for('teacher.view_results'))
     if session.get('role') == 'teacher':
         user_id = session.get('user_id')
         assigned_classes = get_teacher_assigned_classes(user_id)
         if result_to_delete['class_name'] not in assigned_classes:
             flash("You do not have permission to delete results for this class.", "error")
+            cursor.close()
             return redirect(url_for('teacher.view_results'))
     cursor.execute("DELETE FROM exam_results WHERE result_id = %s", (result_id,))
     conn.commit()
+    cursor.close()
     student_name = f"{result_to_delete['first_name']} {result_to_delete['last_name']}"
     subject = result_to_delete['subject']
     log_activity(f"Deleted exam result for '{student_name}' in '{subject}'.")
@@ -204,14 +215,16 @@ def get_students_for_class_list():
     class_name = request.form.get('class_name')
     if not class_name: return jsonify([])
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if session['role'] == 'teacher':
         user_id = session['user_id']
         assigned_classes = get_teacher_assigned_classes(user_id)
         if class_name not in assigned_classes:
+            cursor.close()
             return jsonify({'error': 'Unauthorized'}), 403
     cursor.execute("SELECT student_id, first_name, last_name, student_number FROM students WHERE class_name = %s ORDER BY last_name, first_name", (class_name,))
-    students = cursor.fetchall()
+    students = [dict(row) for row in cursor.fetchall()]
+    cursor.close()
     return jsonify(students)
 
 @teacher_bp.route('/get_students_for_results', methods=['POST'])
@@ -220,14 +233,16 @@ def get_students_for_results():
     class_name = request.form.get('class_name')
     if not class_name: return jsonify([])
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if session['role'] == 'teacher':
         user_id = session['user_id']
         assigned_classes = get_teacher_assigned_classes(user_id)
         if class_name not in assigned_classes:
+            cursor.close()
             return jsonify({'error': 'Unauthorized'}), 403
     cursor.execute("SELECT student_id, first_name, last_name, student_number FROM students WHERE class_name = %s ORDER BY last_name, first_name", (class_name,))
-    students = cursor.fetchall()
+    students = [dict(row) for row in cursor.fetchall()]
+    cursor.close()
     return jsonify(students)
 
 @teacher_bp.route('/get_student_report_card', methods=['POST'])
@@ -239,11 +254,12 @@ def get_student_report_card():
     if not all([student_id, term, year]):
         return jsonify({'error': 'Missing required parameters.'}), 400
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT student_id, first_name, last_name, class_name FROM students WHERE student_id = %s", (student_id,))
-    student_info = cursor.fetchone()
+    student_info = dict(cursor.fetchone())
     cursor.execute("SELECT * FROM exam_results WHERE student_id = %s AND term = %s AND year = %s ORDER BY subject", (student_id, term, year))
-    results = cursor.fetchall()
+    results = [dict(row) for row in cursor.fetchall()]
+    cursor.close()
     report_data = {'student': student_info, 'results': results}
     return jsonify(report_data)
 
@@ -257,12 +273,14 @@ def get_subject_report():
     if not all([class_name, subject, term, year]):
         return jsonify({'error': 'Missing required parameters.'}), 400
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if session['role'] == 'teacher':
         user_id = session['user_id']
         assigned_classes = get_teacher_assigned_classes(user_id)
         if class_name not in assigned_classes:
+            cursor.close()
             return jsonify({'error': 'Unauthorized'}), 403
     cursor.execute("SELECT s.first_name, s.last_name, s.student_number, er.final_score, er.grade FROM exam_results er JOIN students s ON er.student_id = s.student_id WHERE s.class_name = %s AND er.subject = %s AND er.term = %s AND er.year = %s ORDER BY s.last_name, s.first_name", (class_name, subject, term, year))
-    results = cursor.fetchall()
+    results = [dict(row) for row in cursor.fetchall()]
+    cursor.close()
     return jsonify(results)
