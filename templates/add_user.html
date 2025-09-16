@@ -48,7 +48,7 @@
                 </select>
             </div>
             
-            <!-- *** FIXED HERE: Changed id and name to 'phone' *** -->
+            <!-- Changed id and name to phone -->
             <div id="phone_field" class="hidden">
                 <label for="phone" class="block text-sm font-medium text-gray-700">Teacher's Phone Number</label>
                 <input type="tel" id="phone" name="phone" value="{{ form_data.phone or '' }}"
@@ -77,7 +77,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const roleSelect = document.getElementById('role');
-    // --- FIXED HERE: Changed ID to 'phone_field' ---
+    // Changed ID to 'phone_field
     const phoneFieldDiv = document.getElementById('phone_field');
 
     function togglePhoneField() {

@@ -8,9 +8,14 @@ from routes.user import user_bp
 from routes.assignment import assignment_bp
 from routes.profile import profile_bp
 from routes.curriculum import curriculum_bp
+
+# --- CORRECTED IMPORTS ---
+# We need get_db_connection for the test route, not just close_db.
 from db import close_db, get_db_connection
-from whitenoise import WhiteNoise  # Serve static files
+# We need psycopg2 to catch specific database errors.
 import psycopg2
+# Your whitenoise import is correct.
+from whitenoise import WhiteNoise
 
 def create_app():
     app = Flask(__name__)
@@ -19,7 +24,7 @@ def create_app():
 
     app.teardown_appcontext(close_db)
 
-    # Register all blueprints
+    # All your blueprint registrations are correct
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp, url_prefix='/students')
     app.register_blueprint(teacher_bp, url_prefix='/teachers')
@@ -29,27 +34,36 @@ def create_app():
     app.register_blueprint(profile_bp, url_prefix='/profile')
     app.register_blueprint(curriculum_bp, url_prefix='/curriculum')
 
-    # Default route
+    # Your default route is correct
     @app.route('/')
     def index():
         return redirect(url_for('auth.login'))
 
-    # --- TEMPORARY TEST ROUTE ---
-    # Test database connection from Render
+    # --- ADDED FOR TESTING ---
+    # This route provides a simple way to check the database connection on Render.
     @app.route('/test-db')
     def test_db():
         try:
+            # Use the corrected get_db_connection function from db.py
             conn = get_db_connection()
-            conn.cursor().execute("SELECT 1;")
+            cursor = conn.cursor()
+            # Execute a simple query to verify the connection
+            cursor.execute("SELECT 1;")
+            cursor.close()
             return "✅ Database connection successful!"
+        except psycopg2.Error as e:
+            # This will catch specific PostgreSQL errors (e.g., bad password)
+            return f"❌ Database connection failed: <pre>{e}</pre>"
         except Exception as e:
-            return f"❌ Database connection failed: {e}"
+            # This will catch other errors (e.g., config variable not set)
+            return f"❌ An unexpected error occurred: <pre>{e}</pre>"
+    # --- END OF TEST ROUTE ---
 
     return app
 
 app = create_app()
 
-# Serve static files using WhiteNoise
+# Your WhiteNoise configuration is correct
 app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/')
 
 if __name__ == "__main__":
