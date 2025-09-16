@@ -1,145 +1,240 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, session, redirect, url_for, flash, request, jsonify
 from db import get_db_connection
 from utils import role_required, log_activity
-from werkzeug.security import generate_password_hash
 import psycopg2
 import psycopg2.extras
 
-user_bp = Blueprint('user', __name__)
+# This line is the one the error is about. We need to make sure it's here.
+admin_bp = Blueprint('admin', __name__)
 
-@user_bp.route('/')
+# --- View Logs ---
+@admin_bp.route('/logs')
 @role_required('system_admin')
-def view_users():
+def view_logs():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("""
-        SELECT u.user_id, u.full_name, u.email, u.role, t.teacher_id, t.phone
-        FROM public.users u
-        LEFT JOIN public.teachers t ON u.user_id = t.user_id
-        ORDER BY u.full_name
-    """)
-    users = cursor.fetchall()
+    cursor.execute("SELECT user_full_name, action, timestamp FROM public.activity_logs ORDER BY timestamp DESC")
+    logs = cursor.fetchall()
     cursor.close()
-    return render_template('view_users.html', users=users)
+    return render_template('view_logs.html', logs=logs)
 
-@user_bp.route('/add', methods=['GET', 'POST'])
-@role_required('system_admin')
-def add_user():
-    if request.method == 'POST':
-        full_name = request.form.get('full_name')
-        email = request.form.get('email')
-        role = request.form.get('role')
-        phone = request.form.get('phone')
-        default_password = "password123"
-        hashed_password = generate_password_hash(default_password)
-        if not all([full_name, email, role]):
-            flash("Full Name, Email, and Role are required fields.", "error")
-            return render_template('add_user.html', form_data=request.form)
-        if role == 'teacher' and not phone:
-            flash("Phone number is required for the 'Teacher' role.", "error")
-            return render_template('add_user.html', form_data=request.form)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT user_id FROM public.users WHERE email = %s", (email,))
-        if cursor.fetchone():
-            flash("A user with this email address already exists.", "error")
-            cursor.close()
-            return render_template('add_user.html', form_data=request.form)
-        
-        cursor.execute(
-            "INSERT INTO public.users (full_name, email, password, role) VALUES (%s, %s, %s, %s) RETURNING user_id",
-            (full_name, email, hashed_password, role)
-        )
-        new_user_id = cursor.fetchone()['user_id']
-        
-        if role == 'teacher':
-            cursor.execute("INSERT INTO public.teachers (user_id, phone) VALUES (%s, %s)", (new_user_id, phone))
-        
-        conn.commit()
-        cursor.close()
-        log_activity(f"Created new user: '{full_name}' with role '{role}'.")
-        flash(f"User '{full_name}' created successfully.", "success")
-        return redirect(url_for('user.view_users'))
-    
-    return render_template('add_user.html')
-
-@user_bp.route('/edit/<int:user_id>', methods=['GET', 'POST'])
-@role_required('system_admin')
-def edit_user(user_id):
+# --- Fee Payment Functions ---
+def _get_filtered_fee_payments(selected_year, selected_term, selected_class):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-
-        if action == 'update_details':
-            full_name = request.form.get('full_name')
-            email = request.form.get('email')
-            role = request.form.get('role')
-            phone = request.form.get('phone')
-
-            if role == 'teacher' and not phone:
-                flash("Phone number is required for the 'Teacher' role.", "error")
-                cursor.close()
-                return redirect(url_for('user.edit_user', user_id=user_id))
-
-            cursor.execute("UPDATE public.users SET full_name = %s, email = %s, role = %s WHERE user_id = %s", (full_name, email, role, user_id))
-            
-            if role == 'teacher':
-                cursor.execute("SELECT teacher_id FROM public.teachers WHERE user_id = %s", (user_id,))
-                teacher_profile = cursor.fetchone()
-                if teacher_profile:
-                    cursor.execute("UPDATE public.teachers SET phone = %s WHERE user_id = %s", (phone, user_id))
-                else:
-                    cursor.execute("INSERT INTO public.teachers (user_id, phone) VALUES (%s, %s)", (user_id, phone))
-            
-            conn.commit()
-            log_activity(f"Edited user details for '{full_name}' (ID: {user_id}).")
-            flash("User details updated successfully.", "success")
-
-        elif action == 'reset_password':
-            default_password = "password123"
-            hashed_password = generate_password_hash(default_password)
-            cursor.execute("UPDATE public.users SET password = %s WHERE user_id = %s", (hashed_password, user_id))
-            conn.commit()
-            log_activity(f"Reset password for user ID: {user_id}.")
-            flash("User's password has been reset to 'password123'.", "success")
-        
-        cursor.close()
-        return redirect(url_for('user.edit_user', user_id=user_id))
-
-    cursor.execute("""
-        SELECT u.user_id, u.full_name, u.email, u.role, t.phone
-        FROM public.users u
-        LEFT JOIN public.teachers t ON u.user_id = t.user_id
-        WHERE u.user_id = %s
-    """, (user_id,))
-    user_data = cursor.fetchone()
+    query = "SELECT fp.payment_id, s.student_number, s.first_name, s.middle_name, s.last_name, fp.amount_paid, fp.payment_date, fp.term, fp.academic_year, s.class_name FROM public.fee_payments fp JOIN public.students s ON fp.student_id = s.student_id"
+    filters = []
+    params = []
+    if selected_year:
+        filters.append("fp.academic_year = %s")
+        params.append(selected_year)
+    if selected_term:
+        filters.append("fp.term = %s")
+        params.append(selected_term)
+    if selected_class:
+        filters.append("s.class_name = %s")
+        params.append(selected_class)
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
+    query += " ORDER BY fp.payment_date DESC"
+    cursor.execute(query, tuple(params))
+    results = cursor.fetchall()
     cursor.close()
-    if not user_data:
-        flash("User not found.", "error")
-        return redirect(url_for('user.view_users'))
-        
-    return render_template('edit_user.html', user=user_data)
+    return results
 
+@admin_bp.route('/fee_payment_form')
+@role_required('accounts')
+def fee_payment_form():
+    return render_template('record_payment.html')
 
-@user_bp.route('/delete/<int:user_id>', methods=['POST'])
-@role_required('system_admin')
-def delete_user(user_id):
-    if user_id == session.get('user_id'):
-        flash("You cannot delete your own account.", "error")
-        return redirect(url_for('user.view_users'))
+@admin_bp.route('/submit_fee', methods=['POST'])
+@role_required('accounts')
+def submit_fee():
+    student_number = request.form.get('student_number')
+    amount_paid = request.form.get('amount_paid')
+    payment_date = request.form.get('payment_date')
+    term = request.form.get('term')
+    academic_year = request.form.get('academic_year')
+    if not all([student_number, amount_paid, payment_date, term, academic_year]):
+        flash("Please fill out all fields.", "error")
+        return redirect(url_for('admin.fee_payment_form'))
+    try:
+        amount_paid = float(amount_paid)
+    except ValueError:
+        flash("Invalid amount entered. Please use numbers only.", "error")
+        return redirect(url_for('admin.fee_payment_form'))
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT full_name FROM public.users WHERE user_id = %s", (user_id,))
-    user_to_delete = cursor.fetchone()
-    user_name = user_to_delete['full_name'] if user_to_delete else 'Unknown'
-    
-    cursor.execute("DELETE FROM public.teachers WHERE user_id = %s", (user_id,))
-    cursor.execute("DELETE FROM public.users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT student_id, first_name, last_name FROM public.students WHERE student_number = %s", (student_number,))
+    student = cursor.fetchone()
+    if not student:
+        flash("Student number not found.", "error")
+        cursor.close()
+        return redirect(url_for('admin.fee_payment_form'))
+    student_id = student['student_id']
+    student_name = f"{student['first_name']} {student.get('last_name', '')}".strip()
+    cursor.execute("INSERT INTO public.fee_payments (student_id, amount_paid, payment_date, term, academic_year) VALUES (%s, %s, %s, %s, %s)", (student_id, amount_paid, payment_date, term, academic_year))
     conn.commit()
     cursor.close()
-    log_activity(f"Deleted user: '{user_name}' (ID: {user_id}).")
-    flash("User deleted successfully.", "success")
-    return redirect(url_for('user.view_users'))
+    log_activity(f"Recorded fee payment of {amount_paid} for student '{student_name}' ({student_number}).")
+    flash("Fee payment recorded successfully.", "success")
+    return redirect(url_for('admin.fee_payment_form'))
+
+@admin_bp.route('/view_fee_payments')
+@role_required('system_admin', 'school_admin', 'accounts')
+def view_fee_payments():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT DISTINCT academic_year FROM public.fee_payments ORDER BY academic_year DESC")
+    academic_years = [row['academic_year'] for row in cursor.fetchall()]
+    cursor.execute("SELECT DISTINCT term FROM public.fee_payments ORDER BY term")
+    terms = [row['term'] for row in cursor.fetchall()]
+    cursor.execute("SELECT DISTINCT class_name FROM public.classes ORDER BY class_name")
+    classes = [row['class_name'] for row in cursor.fetchall()]
+    cursor.close()
+    return render_template('view_fee_payments.html', academic_years=academic_years, terms=terms, classes=classes)
+
+@admin_bp.route('/filter_fee_payments', methods=['POST'])
+@role_required('system_admin', 'school_admin', 'accounts')
+def filter_fee_payments():
+    selected_year = request.form.get('academic_year')
+    selected_term = request.form.get('term')
+    selected_class = request.form.get('class_name')
+    results = _get_filtered_fee_payments(selected_year, selected_term, selected_class)
+    payments = []
+    for r in results:
+        r_dict = dict(r)
+        r_dict["full_name"] = f"{r_dict['first_name']} {r_dict.get('middle_name') or ''} {r_dict['last_name']}".replace('  ', ' ')
+        r_dict["payment_date"] = r_dict["payment_date"].strftime("%Y-%m-%d")
+        payments.append(r_dict)
+    return jsonify({"payments": payments})
+
+@admin_bp.route('/edit_fee/<int:payment_id>', methods=['GET', 'POST'])
+@role_required('accounts')
+def edit_fee(payment_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    if request.method == 'POST':
+        amount_paid = request.form.get('amount_paid')
+        payment_date = request.form.get('payment_date')
+        term = request.form.get('term')
+        academic_year = request.form.get('academic_year')
+        if not all([amount_paid, payment_date, term, academic_year]):
+            flash("Please fill out all fields.", "error")
+            cursor.close()
+            return redirect(url_for('admin.edit_fee', payment_id=payment_id))
+        try:
+            amount_paid = float(amount_paid)
+        except ValueError:
+            flash("Invalid amount entered.", "error")
+            cursor.close()
+            return redirect(url_for('admin.edit_fee', payment_id=payment_id))
+        cursor.execute("UPDATE public.fee_payments SET amount_paid = %s, payment_date = %s, term = %s, academic_year = %s WHERE payment_id = %s", (amount_paid, payment_date, term, academic_year, payment_id))
+        conn.commit()
+        cursor.close()
+        log_activity(f"Edited fee payment record (ID: {payment_id}).")
+        flash("Fee payment updated successfully.", "success")
+        return redirect(url_for('admin.view_fee_payments'))
+    
+    cursor.execute("SELECT fp.*, s.student_number, s.first_name, s.middle_name, s.last_name FROM public.fee_payments fp JOIN public.students s ON fp.student_id = s.student_id WHERE fp.payment_id = %s", (payment_id,))
+    payment = cursor.fetchone()
+    cursor.close()
+    if not payment:
+        flash("Fee payment record not found.", "error")
+        return redirect(url_for('admin.view_fee_payments'))
+    
+    payment_dict = dict(payment)
+    if payment_dict.get('payment_date'):
+        payment_dict['payment_date'] = payment_dict['payment_date'].strftime('%Y-%m-%d')
+    return render_template('edit_fee.html', payment=payment_dict)
+
+@admin_bp.route('/delete_fee/<int:payment_id>', methods=['POST'])
+@role_required('accounts')
+def delete_fee(payment_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT s.student_number FROM public.fee_payments fp JOIN public.students s ON fp.student_id = s.student_id WHERE payment_id = %s", (payment_id,))
+    payment_to_delete = cursor.fetchone()
+    if not payment_to_delete:
+        flash("Payment record not found.", "error")
+        cursor.close()
+        return redirect(url_for('admin.view_fee_payments'))
+    cursor.execute("DELETE FROM public.fee_payments WHERE payment_id = %s", (payment_id,))
+    conn.commit()
+    cursor.close()
+    student_number = payment_to_delete['student_number']
+    log_activity(f"Deleted fee payment record (ID: {payment_id}) for student {student_number}.")
+    flash("Fee payment deleted successfully.", "success")
+    return redirect(url_for('admin.view_fee_payments'))
+
+@admin_bp.route('/unauthorized')
+def unauthorized():
+    return render_template('unauthorized.html'), 403
+
+@admin_bp.route('/system_admin_dashboard')
+@role_required('system_admin')
+def system_admin_dashboard():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT COUNT(*) as count FROM public.students")
+    total_students = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM public.users WHERE role = 'teacher'")
+    total_teachers = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(DISTINCT class_name) as count FROM public.classes")
+    total_classes = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM public.users")
+    total_users = cursor.fetchone()['count']
+    cursor.execute("SELECT full_name as user, 'User Created' as action, role as timestamp FROM public.users ORDER BY user_id DESC LIMIT 5")
+    recent_activities = cursor.fetchall()
+    cursor.close()
+    return render_template('system_admin_dashboard.html', total_students=total_students, total_teachers=total_teachers, total_classes=total_classes, total_users=total_users, recent_activities=recent_activities)
+
+@admin_bp.route('/accounts_dashboard', endpoint='accounts_dashboard')
+@role_required('accounts')
+def accounts_dashboard():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT COUNT(payment_id) as count FROM public.fee_payments")
+    payment_count = cursor.fetchone()['count']
+    cursor.execute("SELECT SUM(amount_paid) as total FROM public.fee_payments")
+    total_collected = cursor.fetchone()['total'] or 0
+    cursor.close()
+    return render_template('accounts_dashboard.html', payment_count=payment_count, total_collected=total_collected)
+
+@admin_bp.route('/school_admin_dashboard', endpoint='school_admin_dashboard')
+@role_required('school_admin')
+def school_admin_dashboard():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT COUNT(*) as count FROM public.students")
+    total_students = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(*) as count FROM public.users WHERE role = 'teacher'")
+    total_teachers = cursor.fetchone()['count']
+    cursor.execute("SELECT COUNT(DISTINCT class_name) as count FROM public.classes")
+    total_classes = cursor.fetchone()['count']
+    cursor.close()
+    return render_template('school_admin_dashboard.html', total_students=total_students, total_teachers=total_teachers, total_classes=total_classes)
+
+@admin_bp.route('/data/students_per_class')
+@role_required('system_admin')
+def get_students_per_class_data():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT class_name, COUNT(student_id) as student_count FROM public.students GROUP BY class_name ORDER BY class_name;")
+    data = cursor.fetchall()
+    cursor.close()
+    labels = [row['class_name'] for row in data]
+    values = [row['student_count'] for row in data]
+    return jsonify({'labels': labels, 'values': values})
+
+@admin_bp.route('/data/users_by_role')
+@role_required('system_admin')
+def get_users_by_role_data():
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT role, COUNT(user_id) as user_count FROM public.users GROUP BY role ORDER BY role;")
+    data = cursor.fetchall()
+    cursor.close()
+    labels = [row['role'].replace('_', ' ').title() for row in data]
+    values = [row['user_count'] for row in data]
+    return jsonify({'labels': labels, 'values': values})
