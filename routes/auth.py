@@ -2,10 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from db import get_db_connection
 from werkzeug.security import check_password_hash
 from utils import log_activity
-# --- CHANGES START HERE ---
 import psycopg2
 import psycopg2.extras
-# --- CHANGES END HERE ---
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -23,12 +21,11 @@ def login():
             return redirect(url_for('auth.login'))
 
         conn = get_db_connection()
-        # --- THE MAIN FIX IS HERE ---
-        # Replace 'dictionary=True' with the correct cursor factory for psycopg2
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT user_id, full_name, email, password, role FROM users WHERE email = %s", (email,))
+        
+        # --- THE FIX IS HERE: Specify the 'public' schema ---
+        cursor.execute("SELECT user_id, full_name, email, password, role FROM public.users WHERE email = %s", (email,))
         user = cursor.fetchone()
-        # Always close the cursor when you are done with it
         cursor.close()
 
         if user and check_password_hash(user['password'], password):

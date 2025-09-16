@@ -2,10 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from db import get_db_connection
 from utils import role_required, log_activity
 from werkzeug.security import generate_password_hash
-# --- CHANGES START HERE ---
 import psycopg2
 import psycopg2.extras
-# --- CHANGES END HERE ---
 
 user_bp = Blueprint('user', __name__)
 
@@ -13,12 +11,11 @@ user_bp = Blueprint('user', __name__)
 @role_required('system_admin')
 def view_users():
     conn = get_db_connection()
-    # Use the correct cursor factory
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("""
         SELECT u.user_id, u.full_name, u.email, u.role, t.teacher_id, t.phone
-        FROM users u
-        LEFT JOIN teachers t ON u.user_id = t.user_id
+        FROM public.users u
+        LEFT JOIN public.teachers t ON u.user_id = t.user_id
         ORDER BY u.full_name
     """)
     users = cursor.fetchall()
@@ -44,22 +41,20 @@ def add_user():
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT user_id FROM users WHERE email = %s", (email,))
+        cursor.execute("SELECT user_id FROM public.users WHERE email = %s", (email,))
         if cursor.fetchone():
             flash("A user with this email address already exists.", "error")
             cursor.close()
             return render_template('add_user.html', form_data=request.form)
         
-        # --- CRITICAL CHANGE: How to get the new user's ID ---
-        # PostgreSQL uses 'RETURNING' instead of 'lastrowid'
         cursor.execute(
-            "INSERT INTO users (full_name, email, password, role) VALUES (%s, %s, %s, %s) RETURNING user_id",
+            "INSERT INTO public.users (full_name, email, password, role) VALUES (%s, %s, %s, %s) RETURNING user_id",
             (full_name, email, hashed_password, role)
         )
         new_user_id = cursor.fetchone()['user_id']
         
         if role == 'teacher':
-            cursor.execute("INSERT INTO teachers (user_id, phone) VALUES (%s, %s)", (new_user_id, phone))
+            cursor.execute("INSERT INTO public.teachers (user_id, phone) VALUES (%s, %s)", (new_user_id, phone))
         
         conn.commit()
         cursor.close()
@@ -89,15 +84,15 @@ def edit_user(user_id):
                 cursor.close()
                 return redirect(url_for('user.edit_user', user_id=user_id))
 
-            cursor.execute("UPDATE users SET full_name = %s, email = %s, role = %s WHERE user_id = %s", (full_name, email, role, user_id))
+            cursor.execute("UPDATE public.users SET full_name = %s, email = %s, role = %s WHERE user_id = %s", (full_name, email, role, user_id))
             
             if role == 'teacher':
-                cursor.execute("SELECT teacher_id FROM teachers WHERE user_id = %s", (user_id,))
+                cursor.execute("SELECT teacher_id FROM public.teachers WHERE user_id = %s", (user_id,))
                 teacher_profile = cursor.fetchone()
                 if teacher_profile:
-                    cursor.execute("UPDATE teachers SET phone = %s WHERE user_id = %s", (phone, user_id))
+                    cursor.execute("UPDATE public.teachers SET phone = %s WHERE user_id = %s", (phone, user_id))
                 else:
-                    cursor.execute("INSERT INTO teachers (user_id, phone) VALUES (%s, %s)", (user_id, phone))
+                    cursor.execute("INSERT INTO public.teachers (user_id, phone) VALUES (%s, %s)", (user_id, phone))
             
             conn.commit()
             log_activity(f"Edited user details for '{full_name}' (ID: {user_id}).")
@@ -106,7 +101,7 @@ def edit_user(user_id):
         elif action == 'reset_password':
             default_password = "password123"
             hashed_password = generate_password_hash(default_password)
-            cursor.execute("UPDATE users SET password = %s WHERE user_id = %s", (hashed_password, user_id))
+            cursor.execute("UPDATE public.users SET password = %s WHERE user_id = %s", (hashed_password, user_id))
             conn.commit()
             log_activity(f"Reset password for user ID: {user_id}.")
             flash("User's password has been reset to 'password123'.", "success")
@@ -116,8 +111,8 @@ def edit_user(user_id):
 
     cursor.execute("""
         SELECT u.user_id, u.full_name, u.email, u.role, t.phone
-        FROM users u
-        LEFT JOIN teachers t ON u.user_id = t.user_id
+        FROM public.users u
+        LEFT JOIN public.teachers t ON u.user_id = t.user_id
         WHERE u.user_id = %s
     """, (user_id,))
     user_data = cursor.fetchone()
@@ -137,14 +132,12 @@ def delete_user(user_id):
         return redirect(url_for('user.view_users'))
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT full_name FROM users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT full_name FROM public.users WHERE user_id = %s", (user_id,))
     user_to_delete = cursor.fetchone()
     user_name = user_to_delete['full_name'] if user_to_delete else 'Unknown'
     
-    # In PostgreSQL, it's safer to handle related data deletion with transactions
-    # or database-level cascading deletes. This code is functionally correct.
-    cursor.execute("DELETE FROM teachers WHERE user_id = %s", (user_id,))
-    cursor.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
+    cursor.execute("DELETE FROM public.teachers WHERE user_id = %s", (user_id,))
+    cursor.execute("DELETE FROM public.users WHERE user_id = %s", (user_id,))
     conn.commit()
     cursor.close()
     log_activity(f"Deleted user: '{user_name}' (ID: {user_id}).")

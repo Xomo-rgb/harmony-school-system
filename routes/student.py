@@ -2,10 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from db import get_db_connection
 from utils import role_required, log_activity
 from datetime import datetime, date
-# --- CHANGES START HERE ---
 import psycopg2
 import psycopg2.extras
-# --- CHANGES END HERE ---
 
 student_bp = Blueprint('student', __name__)
 
@@ -13,16 +11,16 @@ student_bp = Blueprint('student', __name__)
 @role_required('teacher', 'school_admin', 'system_admin', 'accounts')
 def profile(student_id):
     conn = get_db_connection()
-    # Use the correct cursor factory for dictionary-like results
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
+    cursor.execute("SELECT * FROM public.students WHERE student_id = %s", (student_id,))
     student = cursor.fetchone()
     if not student:
         flash("Student not found.", "error")
+        cursor.close()
         return redirect(url_for('student.view_students'))
-    cursor.execute("SELECT * FROM exam_results WHERE student_id = %s ORDER BY year DESC, term DESC, subject ASC", (student_id,))
+    cursor.execute("SELECT * FROM public.exam_results WHERE student_id = %s ORDER BY year DESC, term DESC, subject ASC", (student_id,))
     results = cursor.fetchall()
-    cursor.execute("SELECT * FROM fee_payments WHERE student_id = %s ORDER BY payment_date DESC", (student_id,))
+    cursor.execute("SELECT * FROM public.fee_payments WHERE student_id = %s ORDER BY payment_date DESC", (student_id,))
     payments = cursor.fetchall()
     cursor.close()
     return render_template('student_profile.html', student=student, results=results, payments=payments)
@@ -52,19 +50,19 @@ def register_student():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if government_number:
-            cursor.execute("SELECT student_id FROM students WHERE government_number = %s", (government_number,))
+            cursor.execute("SELECT student_id FROM public.students WHERE government_number = %s", (government_number,))
             if cursor.fetchone():
                 flash(f"The government number '{government_number}' is already assigned to another student.", "error")
                 cursor.close()
                 return render_template('register_student.html', form_data=request.form)
-
+        
         try:
-            cursor.execute("SELECT MAX(student_id) as max_id FROM students")
+            cursor.execute("SELECT MAX(student_id) as max_id FROM public.students")
             max_id = cursor.fetchone()['max_id'] or 0
             student_number = f"HS-2025-{str(max_id + 1).zfill(3)}"
             gov_num_to_insert = government_number if government_number else None
 
-            insert_query = "INSERT INTO students (student_number, first_name, middle_name, last_name, dob, gender, class_name, guardian_contact, government_number, special_needs, address, enrollment_date) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            insert_query = "INSERT INTO public.students (student_number, first_name, middle_name, last_name, dob, gender, class_name, guardian_contact, government_number, special_needs, address, enrollment_date) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             values = (student_number, first_name, middle_name, last_name, dob, gender, class_name, guardian_contact, gov_num_to_insert, special_needs, address, enrollment_date)
             cursor.execute(insert_query, values)
             conn.commit()
@@ -73,10 +71,8 @@ def register_student():
             flash(f"Student '{first_name} {last_name}' registered successfully.", "success")
             cursor.close()
             return redirect(url_for('student.view_students'))
-
-        # --- CHANGE HERE: Catch the correct error type and code ---
+        
         except psycopg2.Error as err:
-            # PostgreSQL code for unique violation is '23505'
             if err.pgcode == '23505':
                  flash(f"A student with these details already exists.", "error")
             else:
@@ -104,7 +100,7 @@ def edit_student(student_id):
         special_needs = request.form['special_needs']
         address = request.form['address']
         enrollment_date = request.form['enrollment_date']
-        update_query = "UPDATE students SET first_name=%s, middle_name=%s, last_name=%s, dob=%s, gender=%s, class_name=%s, guardian_contact=%s, government_number=%s, special_needs=%s, address=%s, enrollment_date=%s WHERE student_id=%s"
+        update_query = "UPDATE public.students SET first_name=%s, middle_name=%s, last_name=%s, dob=%s, gender=%s, class_name=%s, guardian_contact=%s, government_number=%s, special_needs=%s, address=%s, enrollment_date=%s WHERE student_id=%s"
         values = (first_name, middle_name, last_name, dob, gender, class_name, guardian_contact, government_number, special_needs, address, enrollment_date, student_id)
         cursor.execute(update_query, values)
         conn.commit()
@@ -112,8 +108,7 @@ def edit_student(student_id):
         flash("Student information updated successfully.", "success")
         cursor.close()
         return redirect(url_for('student.view_students'))
-    
-    cursor.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
+    cursor.execute("SELECT * FROM public.students WHERE student_id = %s", (student_id,))
     student = cursor.fetchone()
     cursor.close()
     if not student:
@@ -131,14 +126,14 @@ def edit_student(student_id):
 def delete_student(student_id):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT first_name, last_name FROM students WHERE student_id = %s", (student_id,))
+    cursor.execute("SELECT first_name, last_name FROM public.students WHERE student_id = %s", (student_id,))
     student_to_delete = cursor.fetchone()
     if not student_to_delete:
         flash("Student not found.", "error")
         cursor.close()
         return redirect(url_for('student.view_students'))
     student_name = f"{student_to_delete['first_name']} {student_to_delete['last_name']}"
-    cursor.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
+    cursor.execute("DELETE FROM public.students WHERE student_id = %s", (student_id,))
     conn.commit()
     log_activity(f"Deleted student record for '{student_name}' (ID: {student_id}).")
     flash("Student deleted successfully.", "success")
@@ -151,7 +146,7 @@ def delete_student(student_id):
 def view_students():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cursor.execute("SELECT * FROM students ORDER BY last_name, first_name")
+    cursor.execute("SELECT * FROM public.students ORDER BY last_name, first_name")
     students = cursor.fetchall()
     cursor.close()
     return render_template('view_students.html', students=students)
@@ -164,13 +159,12 @@ def filter_students():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     if selected_class:
-        cursor.execute("SELECT * FROM students WHERE class_name = %s ORDER BY last_name, first_name", (selected_class,))
+        cursor.execute("SELECT * FROM public.students WHERE class_name = %s ORDER BY last_name, first_name", (selected_class,))
     else:
-        cursor.execute("SELECT * FROM students ORDER BY last_name, first_name")
+        cursor.execute("SELECT * FROM public.students ORDER BY last_name, first_name")
     students = cursor.fetchall()
     cursor.close()
     students_list = []
-    # Convert Row objects to plain dictionaries for JSON serialization
     for s in students:
         s_dict = dict(s)
         s_dict['dob'] = s_dict['dob'].strftime('%Y-%m-%d') if s_dict.get('dob') else None
