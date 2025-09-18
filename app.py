@@ -1,4 +1,4 @@
-import os  # <-- Required to find the absolute path
+import os
 from flask import Flask, redirect, url_for
 from config import Config
 from routes.auth import auth_bp
@@ -35,16 +35,37 @@ def create_app():
     app.register_blueprint(profile_bp, url_prefix='/profile')
     app.register_blueprint(curriculum_bp, url_prefix='/curriculum')
 
+    # Default route
     @app.route('/')
     def index():
         return redirect(url_for('auth.login'))
+
+    # --- ADD THIS DEBUGGING ROUTE ---
+    # This route will show us the exact file structure on the Render server.
+    @app.route('/debug-filesystem')
+    def debug_filesystem():
+        output = "<h1>Files on Server</h1>"
+        start_path = os.path.dirname(os.path.abspath(__file__))
+        output += f"<h3>Project Root Path: {start_path}</h3><pre>"
+        
+        # Walk through all directories and files and build a visual tree
+        for root, dirs, files in os.walk(start_path):
+            level = root.replace(start_path, '').count(os.sep)
+            indent = '&nbsp;&nbsp;&nbsp;&nbsp;' * level
+            output += f'{indent}{os.path.basename(root)}/<br>'
+            subindent = '&nbsp;&nbsp;&nbsp;&nbsp;' * (level + 1)
+            for f in files:
+                output += f'{subindent}{f}<br>'
+                
+        output += "</pre>"
+        return output
+    # --- END OF DEBUGGING ROUTE ---
 
     return app
 
 app = create_app()
 
-# --- THIS IS THE FIX ---
-# We are now giving WhiteNoise the full, absolute path to your static folder.
+# Configure WhiteNoise with the absolute path to the static folder.
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=STATIC_DIR)
 
 
