@@ -1,3 +1,4 @@
+import os  # <-- 1. Import the 'os' module
 from flask import Flask, redirect, url_for
 from config import Config
 from routes.auth import auth_bp
@@ -8,14 +9,12 @@ from routes.user import user_bp
 from routes.assignment import assignment_bp
 from routes.profile import profile_bp
 from routes.curriculum import curriculum_bp
-
-# --- CORRECTED IMPORTS ---
-# We need get_db_connection for the test route, not just close_db.
 from db import close_db, get_db_connection
-# We need psycopg2 to catch specific database errors.
-import psycopg2
-# Your whitenoise import is correct.
 from whitenoise import WhiteNoise
+import psycopg2
+
+# --- 2. Define the absolute base directory of your project ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def create_app():
     app = Flask(__name__)
@@ -24,7 +23,7 @@ def create_app():
 
     app.teardown_appcontext(close_db)
 
-    # All your blueprint registrations are correct
+    # Register all blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp, url_prefix='/students')
     app.register_blueprint(teacher_bp, url_prefix='/teachers')
@@ -34,18 +33,21 @@ def create_app():
     app.register_blueprint(profile_bp, url_prefix='/profile')
     app.register_blueprint(curriculum_bp, url_prefix='/curriculum')
 
-    # Your default route is correct
+    # Default route
     @app.route('/')
     def index():
         return redirect(url_for('auth.login'))
+
 
 
     return app
 
 app = create_app()
 
-# Your WhiteNoise configuration is correct
-app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/')
+
+# Configure WhiteNoise with the absolute path to the static folder
+app.wsgi_app = WhiteNoise(app.wsgi_app, root=os.path.join(BASE_DIR, 'static'))
+
 
 if __name__ == "__main__":
     app.run()
