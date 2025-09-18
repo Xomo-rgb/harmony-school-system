@@ -1,4 +1,4 @@
-import os  # <-- 1. Import the 'os' module
+import os  # <-- We need this to find the file path
 from flask import Flask, redirect, url_for
 from config import Config
 from routes.auth import auth_bp
@@ -9,12 +9,14 @@ from routes.user import user_bp
 from routes.assignment import assignment_bp
 from routes.profile import profile_bp
 from routes.curriculum import curriculum_bp
-from db import close_db, get_db_connection
+from db import close_db
 from whitenoise import WhiteNoise
-import psycopg2
 
-# --- 2. Define the absolute base directory of your project ---
+# This line finds the absolute path to your project's directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# This line creates the full path to your static folder
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+
 
 def create_app():
     app = Flask(__name__)
@@ -38,15 +40,14 @@ def create_app():
     def index():
         return redirect(url_for('auth.login'))
 
-
-
     return app
 
 app = create_app()
 
-
-# Configure WhiteNoise with the absolute path to the static folder
-app.wsgi_app = WhiteNoise(app.wsgi_app, root=os.path.join(BASE_DIR, 'static'))
+# --- THIS IS THE FINAL FIX ---
+# We are now giving WhiteNoise the full, absolute path to your static folder.
+# This eliminates any confusion about where the files are located on the server.
+app.wsgi_app = WhiteNoise(app.wsgi_app, root=STATIC_DIR)
 
 
 if __name__ == "__main__":
