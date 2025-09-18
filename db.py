@@ -1,4 +1,4 @@
-# The correct db.py file
+
 import psycopg2
 from flask import g
 from config import Config

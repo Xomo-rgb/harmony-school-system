@@ -23,7 +23,7 @@ def login():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # --- THE FIX IS HERE: Specify the 'public' schema ---
+        # Specifying the 'public' schema
         cursor.execute("SELECT user_id, full_name, email, password, role FROM public.users WHERE email = %s", (email,))
         user = cursor.fetchone()
         cursor.close()

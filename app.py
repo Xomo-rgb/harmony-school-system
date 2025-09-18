@@ -12,9 +12,9 @@ from routes.curriculum import curriculum_bp
 from db import close_db
 from whitenoise import WhiteNoise
 
-# This finds the absolute path to your project's main directory
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# This creates the full, absolute path to your static folder
+
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
 
@@ -25,7 +25,7 @@ def create_app():
 
     app.teardown_appcontext(close_db)
 
-    # Register all your blueprints
+    # all blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(student_bp, url_prefix='/students')
     app.register_blueprint(teacher_bp, url_prefix='/teachers')
@@ -40,32 +40,10 @@ def create_app():
     def index():
         return redirect(url_for('auth.login'))
 
-    # --- ADD THIS DEBUGGING ROUTE ---
-    # This route will show us the exact file structure on the Render server.
-    @app.route('/debug-filesystem')
-    def debug_filesystem():
-        output = "<h1>Files on Server</h1>"
-        start_path = os.path.dirname(os.path.abspath(__file__))
-        output += f"<h3>Project Root Path: {start_path}</h3><pre>"
-        
-        # Walk through all directories and files and build a visual tree
-        for root, dirs, files in os.walk(start_path):
-            level = root.replace(start_path, '').count(os.sep)
-            indent = '&nbsp;&nbsp;&nbsp;&nbsp;' * level
-            output += f'{indent}{os.path.basename(root)}/<br>'
-            subindent = '&nbsp;&nbsp;&nbsp;&nbsp;' * (level + 1)
-            for f in files:
-                output += f'{subindent}{f}<br>'
-                
-        output += "</pre>"
-        return output
-    # --- END OF DEBUGGING ROUTE ---
-
     return app
 
 app = create_app()
 
-# Configure WhiteNoise with the absolute path to the static folder.
 app.wsgi_app = WhiteNoise(app.wsgi_app, root=STATIC_DIR)
 
 

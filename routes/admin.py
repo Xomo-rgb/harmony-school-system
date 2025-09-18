@@ -4,7 +4,7 @@ from utils import role_required, log_activity
 import psycopg2
 import psycopg2.extras
 
-# This line is the one the error is about. We need to make sure it's here.
+
 admin_bp = Blueprint('admin', __name__)
 
 # --- View Logs ---
